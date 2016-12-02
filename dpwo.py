@@ -12,7 +12,7 @@ AIRPORT_PATH = "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/
 
 
 class NETOwner():
-    def __init__(self, mode, iface, regex=b'^NET_',
+    def __init__(self, mode, iface, regex='^NET_',
                  airport=AIRPORT_PATH, verbosity=0):
         self.mode = mode
         self.iface = iface
@@ -23,15 +23,16 @@ class NETOwner():
     def osx_networks(self):
         scan = ''
         while scan == '':  # for some reason airport fails randomly
-            scan = subprocess.check_output([self.airport, "scan"])
+            scan = subprocess.check_output([self.airport, "scan"]).decode()
             # scan the area for wifi
 
-        scan = scan.decode().split("\n")
-        scan.pop(0)
+        scan = scan.split("\n")
 
         for wifi in scan:
-            obj = [_f for _f in wifi.split(" ") if _f]
-            yield obj
+            obj = str.split(wifi)
+
+            if len(obj) > 0:
+                yield obj
 
     def linux_networks(self):
         scan = Cell.all(self.iface)
@@ -47,6 +48,9 @@ class NETOwner():
 
         results = []
         for wifi in scanner:
+            if self.verbosity > 1:
+                print(wifi)
+
             # match NET's default SSID
             if self.regex.search(wifi[0]) is not None:
                 print("Found WIFI!")
@@ -71,15 +75,17 @@ class NETOwner():
 
     def connect_net(self, wifi):
         if self.mode == 'osx':
-            self.connect_net_osx(wifi)
+            status = self.connect_net_osx(wifi)
         else:
-            self.connect_net_linux(wifi)
+            status = self.connect_net_linux(wifi)
+
+        return status
 
     def connect_net_osx(self, wifi):
             connect = subprocess.check_output([
                 "networksetup", "-setairportnetwork",
                 self.iface, wifi[0], wifi[1]
-            ])
+            ]).decode()
 
             if self.verbosity > 0:
                 print(connect)
@@ -87,7 +93,7 @@ class NETOwner():
             return "Failed" not in connect
 
     def connect_net_linux(self, wifi):
-        Scheme.find(self.iface, wifi[1]).activate()
+        return Scheme.find(self.iface, wifi[1]).activate()
 
     def own(self):
         wifi_available = self.scan_network()
@@ -142,7 +148,7 @@ def main():
         args.interface,
         regex=args.regex,
         airport=args.airport,
-        verbosity=args.verbosity
+        verbosity=args.verbosity or 0
     )
 
     owner.own()
