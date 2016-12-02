@@ -8,8 +8,7 @@ from wifi import Cell, Scheme
 NET OWNER 0.3v
 '''
 
-AIRPORT_PATH = "/System/Library/PrivateFrameworks/Apple80211.framework/\
-                Versions/A/Resources/airport"
+AIRPORT_PATH = "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/A/Resources/airport"
 
 
 class NETOwner():
