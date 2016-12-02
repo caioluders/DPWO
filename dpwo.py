@@ -26,11 +26,11 @@ class NETOwner():
             scan = subprocess.check_output([self.airport, "scan"])
             # scan the area for wifi
 
-        scan = scan.split(b"\n")
+        scan = scan.decode().split("\n")
         scan.pop(0)
 
         for wifi in scan:
-            obj = [_f for _f in wifi.split(b" ") if _f]
+            obj = [_f for _f in wifi.split(" ") if _f]
             yield obj
 
     def linux_networks(self):
@@ -140,7 +140,7 @@ def main():
     owner = NETOwner(
         args.mode,
         args.interface,
-        regex=args.regex.encode(),
+        regex=args.regex,
         airport=args.airport,
         verbosity=args.verbosity
     )
