@@ -1,6 +1,6 @@
 # Default-Password-Wifi-Owner
-DPWO 
+DPWO
 
 
-# Blog post about in pt/br :
+# Blog post (PT-BR)
 https://lude.rs/net-wifi-default-password-2/
