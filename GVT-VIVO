@@ -1,0 +1,7 @@
+Roteadores Arcadyan disponibilizados principalmente pela VIVO / GVT utilizam como nome padrão GVT-XXXX ou VIVO-XXXX
+XXXX = 4 últimos dígitos do MAC
+A WPA2 padrão desses roteadores é o S/N 
+
+Ideia: entender como o serial number dos roteadores arcadyan Modelo VRV7006AW22-A-GR são gerados.
+Objetivo: através do entendimento do S/N gerar uma tabela e anexar ao software
+
