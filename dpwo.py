@@ -14,7 +14,7 @@ AIRPORT_PATH = "/System/Library/PrivateFrameworks/Apple80211.framework/\
 
 class NETOwner():
     def __init__(self, mode, iface, regex="^NET_",
-                 airport=AIRPORT_PATH, verbosity=1):
+                 airport=AIRPORT_PATH, verbosity=0):
         self.mode = mode
         self.iface = iface
         self.regex = compile(regex)
@@ -141,7 +141,7 @@ def main():
     owner = NETOwner(
         args.mode,
         args.interface,
-        args.regex,
+        regex=args.regex,
         airport=args.airport,
         verbosity=args.verbosity
     )
