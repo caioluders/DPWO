@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import subprocess, argparse, sys
 from re import compile
 from wifi import Cell, Scheme
