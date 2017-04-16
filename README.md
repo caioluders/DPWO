@@ -3,4 +3,4 @@ DPWO
 
 
 # Blog post (PT-BR)
-https://lude.rs/net-wifi-default-password-2/
+https://medium.com/@caioluders/net-2gxxxx-default-password-d617050f0fca
