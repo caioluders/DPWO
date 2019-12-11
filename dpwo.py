@@ -45,6 +45,7 @@ class NETOwner():
         while scan == "":  # for some reason airport fails randomly
             scan = subprocess.check_output([self.airport, "scan"]).decode()
             # scan the area for wifi
+        scan = scan.encode('ascii','ignore')
         scan = scan.split("\n")
 
         for wifi in scan:
@@ -91,7 +92,7 @@ class NETOwner():
     def connect_net_osx(self, wifi):
             connect = subprocess.check_output([
                 "networksetup", "-setairportnetwork",
-                self.iface, wifi[0], wifi[1]
+                self.iface, wifi['ssid'], wifi['wifi_password']
             ]).decode()
 
             if self.verbosity > 0:
