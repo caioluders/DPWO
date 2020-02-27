@@ -46,7 +46,7 @@ class NETOwner():
             scan = subprocess.check_output([self.airport, "scan"]).decode()
             # scan the area for wifi
         scan = scan.encode('ascii','ignore')
-        scan = scan.split("\n")
+        scan = scan.decode().split("\n")
 
         for wifi in scan:
             obj = str.split(wifi)
