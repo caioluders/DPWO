@@ -56,4 +56,4 @@ optional arguments:
 ```
 
 ## Blog post (PT-BR) (Outdated)
-https://medium.com/@caioluders/net-2gxxxx-default-password-d617050f0fca
+https://lude.rs/h4ck1ng/NET_2GXXXX_default_password.html
