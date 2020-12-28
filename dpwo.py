@@ -138,8 +138,8 @@ def parse_args():
                         help="Network interface.")
     parser.add_argument("-b", "--brute",action='store_true', default=False,
                         help="Enables bruteforce if needed it.")
-    parser.add_argument("-c", "--connect", action="store_true", default=False,
-                        help="Autoconnect to the first vulnerable network.")
+    parser.add_argument("-d", "--disable", action="store_false", default=True,
+                        help="Disable autoconnect to the first vulnerable network.")
     parser.add_argument("-a", "--airport", default=AIRPORT_PATH,
                         help="Airport program path.")
     parser.add_argument("-v", "--verbosity", action="count",
@@ -157,7 +157,7 @@ def main():
 
     owner = NETOwner(
         args.interface,
-        connect=args.connect,
+        connect=args.disable,
         brute=args.brute,
         airport=args.airport,
         verbosity=args.verbosity or 0
