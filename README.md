@@ -2,7 +2,7 @@
 *Default Password Wifi Owner*
 
 ## WTF ? 
-DPWO is a tool for automatically discover passwords of nearby WIFI networks. This is possible due to default passwords schemas used by brazilians internet providers (NET, VIVO, GVT... etc).
+DPWO is a tool for automatically discover passwords of nearby WIFI networks. This is possible due to default passwords schemas used by brazilians internet providers (NET, VIVO, GVT, etc).
 
 ## Plugins
 This is a community-driven tool. Any user can submit a Pull Request to add a new plugin for a new method of discovering  passwords. You should add a python script to the `plugins/` folder and the plugin must in this format :
