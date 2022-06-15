@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import subprocess , argparse , sys , imp , os
+import subprocess , argparse , sys , importlib.util , os
 from wifi import Cell , Scheme
 
 
@@ -33,9 +33,9 @@ class NETOwner():
 
             if f[-3:] != '.py' or os.path.isfile(location) != True:
                 continue
-
-            info = imp.find_module(f[:-3],[plugin_folder])
-            p = imp.load_module(location, *info)
+            
+            info = importlib.machinery.PathFinder().find_spec(f[:-3],[plugin_folder])
+            p = info.loader.load_module()
             plugins.append(p)
 
         return plugins
