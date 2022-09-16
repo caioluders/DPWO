@@ -4,7 +4,6 @@ from typing import Type
 import plugins.PluginLoader as PluginLoader
 import subprocess , argparse , sys
 from wifi import Cell , Scheme
-from tkinter import N
 
 
 
