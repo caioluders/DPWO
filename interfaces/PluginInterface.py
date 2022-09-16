@@ -6,7 +6,7 @@ class PluginInterface(ABC):
     '''
 
     @abstractmethod
-    def is_vuln(ssid: str) -> bool:
+    def is_vuln(ssid: str, mac: str) -> bool:
         pass
 
     @abstractmethod
