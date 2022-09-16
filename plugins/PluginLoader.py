@@ -3,6 +3,9 @@ import os, inspect
 import importlib.util
 
 def load_plugins():
+    '''Loads all the plugins inside '/plugins' folder and then instantiate them,
+    returning it's objects.
+    '''
         plugin_folder = "./plugins"
         possible_plugins = os.listdir(plugin_folder)
         plugins = []
