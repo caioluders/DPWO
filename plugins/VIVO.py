@@ -18,7 +18,7 @@ class VIVO(PluginInterface):
 
 	brute = False
 
-	def is_vuln(ssid) :
+	def is_vuln(ssid,mac) :
 		regex = re.compile("^VIVO-")
 		if regex.search(ssid) is not None:
 			return True

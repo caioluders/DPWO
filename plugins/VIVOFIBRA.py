@@ -18,7 +18,7 @@ class VIVOFIBRA(PluginInterface):
 	
 	brute = False
 
-	def is_vuln(ssid) :
+	def is_vuln(ssid,mac) :
 		regex = re.compile("^VIVOFIBRA-")
 		if regex.search(ssid) is not None:
 			return True
