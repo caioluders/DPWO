@@ -15,7 +15,7 @@ Plugins must be in this format :
 
 brute = False
 
-def is_vuln(ssid,mac) :
+def is_vuln(ssid) :
 	regex = re.compile("^NET_.(g|G)")
 	if regex.search(ssid) is not None:
 		return True
