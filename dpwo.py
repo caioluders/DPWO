@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
-import subprocess , argparse , sys , importlib.util , os
+from interfaces.PluginInterface import PluginInterface
+from typing import Type
+import plugins.PluginLoader as PluginLoader
+import subprocess , argparse , sys
 from wifi import Cell , Scheme
+from tkinter import N
+
 
 
 '''
@@ -21,24 +26,7 @@ class NETOwner():
         self.airport = airport
         self.verbosity = verbosity
         self.os = sys.platform
-        self.plugins = self.load_plugins()
-
-    def load_plugins(self) :
-        plugin_folder = "./plugins"
-        plugins = []
-        possible_plugins = os.listdir(plugin_folder)
-
-        for f in possible_plugins : 
-            location = os.path.join(plugin_folder,f)
-
-            if f[-3:] != '.py' or os.path.isfile(location) != True:
-                continue
-            
-            info = importlib.machinery.PathFinder().find_spec(f[:-3],[plugin_folder])
-            p = info.loader.load_module()
-            plugins.append(p)
-
-        return plugins
+        self.plugins = PluginLoader.load_plugins()
 
     def osx_networks(self):
         scan = ""
@@ -74,7 +62,8 @@ class NETOwner():
 
             # match SSID/MAC to a plugin
 
-            for p in self.plugins : 
+            for p in self.plugins:
+                p: Type[PluginInterface] #typing hint
                 if p.is_vuln(wifi[0],wifi[1]) : 
                     results.append(p.own(wifi[0],wifi[1]))
 
