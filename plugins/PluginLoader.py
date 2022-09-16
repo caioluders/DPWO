@@ -17,7 +17,7 @@ def load_plugins():
             
     for p in plugins: 
         location = plugin_folder + '/' + p
-        if p[-3:] != '.py' or os.path.isfile(location) != True:
+        if p[-3:] != '.py' or os.path.isfile(location) is not True:
             pass
         spec = importlib.util.spec_from_file_location(p[:-3], location)
         spec_module = spec.loader.load_module()
