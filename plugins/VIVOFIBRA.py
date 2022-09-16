@@ -1,4 +1,5 @@
 import re
+from interfaces.PluginInterface import PluginInterface
 
 '''
 ssid = string
@@ -13,16 +14,18 @@ Plugins must be in this format :
 
 '''
 
-brute = False
+class VIVOFIBRA(PluginInterface):
+	
+	brute = False
 
-def is_vuln(ssid) :
-	regex = re.compile("^VIVOFIBRA-")
-	if regex.search(ssid) is not None:
-		return True
-	else : 
-		return False	
+	def is_vuln(ssid) :
+		regex = re.compile("^VIVOFIBRA-")
+		if regex.search(ssid) is not None:
+			return True
+		else : 
+			return False	
 
-def own(ssid,mac) :
-	password = mac.replace(":","").lower()[2:8] + ssid.split("-")[1].lower()
+	def own(ssid,mac) :
+		password = mac.replace(":","").lower()[2:8] + ssid.split("-")[1].lower()
 
-	return {'ssid':ssid,'mac':mac,'wifi_password':password,'admin_login':False,'admin_password':False}
+		return {'ssid':ssid,'mac':mac,'wifi_password':password,'admin_login':False,'admin_password':False}

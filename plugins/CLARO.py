@@ -1,4 +1,5 @@
 import re
+from interfaces.PluginInterface import PluginInterface
 
 '''
 ssid = CLARO_1234
@@ -10,18 +11,21 @@ Plugins must be in this format :
     if you can't define a variable just return False like {'wifi_password':'passwd','admin_login':False,'admin_password':False}
     'wifi_password' is a must.
  4. a 'brute' variable that specify if your plugin needs some bruteforce 
+
 '''
 
-brute = False
+class CLARO(PluginInterface):
 
-def is_vuln(ssid) :
-	regex = re.compile("^CLARO_")
-	if regex.search(ssid) is not None:
-		return True
-	else : 
-		return False	
+	brute = False
 
-def own(ssid,mac) :
-	password = mac.replace(":","").upper()[4:]
-	print(password)
-	return {'ssid':ssid,'mac':mac,'wifi_password':password,'admin_login':False,'admin_password':False}
+	def is_vuln(ssid) :
+		regex = re.compile("^CLARO_")
+		if regex.search(ssid) is not None:
+			return True
+		else : 
+			return False	
+
+	def own(ssid,mac) :
+		password = mac.replace(":","").upper()[4:]
+		
+		return {'ssid':ssid,'mac':mac,'wifi_password':password,'admin_login':False,'admin_password':False}

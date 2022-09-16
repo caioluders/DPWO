@@ -1,4 +1,5 @@
 import re
+from interfaces.PluginInterface import PluginInterface
 
 '''
 ssid = string
@@ -13,21 +14,24 @@ Plugins must be in this format :
 
 '''
 
-brute = False
+class NET(PluginInterface):
 
-def is_vuln(ssid) :
-	regex = re.compile("^NET_.(g|G)")
-	if regex.search(ssid) is not None:
-		return True
-	else : 
-		return False	
-
-def own(ssid,mac) :
-	chunks = [
-				"".join(mac.upper().split(":")[2:3]),
-				ssid.split("_")[1][2:]
-             ]
-
-	password = "".join(chunks)
-
-	return {'ssid':ssid,'mac':mac,'wifi_password':password,'admin_login':ssid,'admin_password':'NET_'+mac.replace(":","")}
+	brute = False
+	
+	def is_vuln(ssid) :
+		regex = re.compile("^NET_.(g|G)")
+		if regex.search(ssid) is not None:
+			return True
+		else : 
+			return False	
+	
+	def own(ssid,mac) :
+		chunks = [
+					"".join(mac.upper().split(":")[2:3]),
+					ssid.split("_")[1][2:]
+	             ]
+	
+		password = "".join(chunks)
+	
+		return {'ssid':ssid,'mac':mac,'wifi_password':password,'admin_login':ssid,'admin_password':'NET_'+mac.replace(":","")}
+	

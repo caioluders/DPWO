@@ -1,4 +1,5 @@
 import re
+from interfaces.PluginInterface import PluginInterface
 
 '''
 ssid = string
@@ -13,16 +14,18 @@ Plugins must be in this format :
 
 '''
 
-brute = False
+class VIVO(PluginInterface):
 
-def is_vuln(ssid) :
-	regex = re.compile("^VIVO-")
-	if regex.search(ssid) is not None:
-		return True
-	else : 
-		return False	
+	brute = False
 
-def own(ssid,mac) :
-	password = mac.replace(":","").upper()[2:]
+	def is_vuln(ssid) :
+		regex = re.compile("^VIVO-")
+		if regex.search(ssid) is not None:
+			return True
+		else : 
+			return False	
 
-	return {'ssid':ssid,'mac':mac,'wifi_password':password,'admin_login':False,'admin_password':False}
+	def own(ssid,mac) :
+		password = mac.replace(":","").upper()[2:]
+
+		return {'ssid':ssid,'mac':mac,'wifi_password':password,'admin_login':False,'admin_password':False}
