@@ -64,7 +64,7 @@ class NETOwner():
 
             for p in self.plugins:
                 p: Type[PluginInterface] #typing hint
-                if p.is_vuln(wifi[0],wifi[1]) : 
+                if p.is_vuln(wifi[0],wifi[1]): 
                     results.append(p.own(wifi[0],wifi[1]))
 
         return results
