@@ -69,13 +69,18 @@ class NETOwner():
 
         results = []
         for wifi in scanner:
+            if wifi[0] == 'SSID':
+                continue
+
             if self.verbosity > 1:
                 print(wifi)
 
             # match SSID/MAC to a plugin
-
             for p in self.plugins : 
-                if p.is_vuln(wifi[0],wifi[1]) : 
+                if self.brute and p.__name__ == "brute" :
+                    for b in p.own(wifi[0],wifi[1]) :
+                        results.append(b)
+                elif p.is_vuln(wifi[0],wifi[1]) : 
                     results.append(p.own(wifi[0],wifi[1]))
 
         return results
@@ -98,7 +103,7 @@ class NETOwner():
             if self.verbosity > 0:
                 print(connect)
 
-            return "Failed" not in connect
+            return "Failed" not in connect and "Could not" not in connect
 
     def connect_net_linux(self, wifi):
         return Scheme.find(self.iface, wifi[1]).activate()
@@ -124,7 +129,8 @@ class NETOwner():
                     print("Trying to connect...")
                     if self.connect_net(wifi):
                         print("Connected! Have fun (:")
-                        connected = True
+                        if not self.brute :
+                            connected = True
                     else:
                         print("Nope :(")
 
@@ -137,7 +143,7 @@ def parse_args():
     parser.add_argument("-i", "--interface", default="wlp3s0",
                         help="Network interface.")
     parser.add_argument("-b", "--brute",action='store_true', default=False,
-                        help="Enables bruteforce if needed it.")
+                        help="Bruteforce all networks unregarding the SSID.")
     parser.add_argument("-d", "--disable", action="store_false", default=True,
                         help="Disable autoconnect to the first vulnerable network.")
     parser.add_argument("-a", "--airport", default=AIRPORT_PATH,
