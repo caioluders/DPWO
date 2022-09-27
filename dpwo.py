@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import subprocess , argparse , sys , importlib.util , os
 from wifi import Cell , Scheme
-
+from tqdm import tqdm
 
 '''
 DPWO
@@ -76,10 +76,10 @@ class NETOwner():
         # elif os == "win32": TODO
 
         results = []
-        for wifi in scanner:
+        for wifi in scanner :
 
             if self.verbosity > 1:
-                print(wifi)
+                tqdm.write(str(wifi))
 
             # match SSID/MAC to a plugin
             for p in self.plugins : 
@@ -107,7 +107,7 @@ class NETOwner():
             ]).decode()
 
             if self.verbosity > 0:
-                print(connect)
+                tqdm.write(connect)
 
             return "Failed" not in connect and "Could not" not in connect
 
@@ -122,23 +122,24 @@ class NETOwner():
             print("No WiFi available :'(")
         else:
             connected = False
-            for wifi in wifi_available:
-                print("WI-FI: " + wifi["ssid"])
-                print("Password: " + wifi["wifi_password"])
+            for wifi in tqdm(wifi_available):
+                tqdm.write("WI-FI: " + wifi["ssid"])
+                tqdm.write("Password: " + wifi["wifi_password"])
+
                 if self.verbosity > 0:
                     if wifi["admin_login"] and wifi["admin_password"] : 
-                        print("Admin credentials of the router: ")
-                        print("User: " + wifi["admin_login"])
-                        print("Password: " + wifi["admin_password"])
+                        tqdm.write("Admin credentials of the router: ")
+                        tqdm.write("User: " + wifi["admin_login"])
+                        tqdm.write("Password: " + wifi["admin_password"])
 
                 if not connected and self.connect:
-                    print("Trying to connect...")
+                    tqdm.write("Trying to connect...")
                     if self.connect_net(wifi):
-                        print("Connected! Have fun (:")
+                        tqdm.write("Connected! Have fun (:")
                         if not self.brute :
                             connected = True
                     else:
-                        print("Nope :(")
+                        tqdm.write("Nope :(")
 
 
 def parse_args():
