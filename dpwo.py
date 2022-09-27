@@ -48,8 +48,16 @@ class NETOwner():
         scan = scan.encode('ascii','ignore')
         scan = scan.decode().split("\n")
 
+        n_spaces = scan[0].split("SSID")[0].count(" ")+4
+
+        scan.pop(0) # remove header
+
         for wifi in scan:
-            obj = str.split(wifi)
+            obj_t = str.split(wifi)
+            if len(obj_t) < 1 :
+                continue
+            obj = [ wifi[:n_spaces].replace(" ",''), 
+                    wifi[n_spaces:].split()[0] ]
 
             if len(obj) > 0:
                 yield obj
@@ -69,8 +77,6 @@ class NETOwner():
 
         results = []
         for wifi in scanner:
-            if wifi[0] == 'SSID':
-                continue
 
             if self.verbosity > 1:
                 print(wifi)
