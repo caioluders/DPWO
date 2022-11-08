@@ -1,2 +1,3 @@
 wifi
 python-wifi
+tqdm
