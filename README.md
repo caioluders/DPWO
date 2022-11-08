@@ -33,6 +33,11 @@ Your plugin will be reviewed before acceptitation.
 
 
 ## Install
+
+### Requirements
+- Python 3
+
+### Dependencies
 `pip install -r requirements.txt`
 
 ## Help

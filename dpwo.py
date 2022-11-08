@@ -1,7 +1,13 @@
 # -*- coding: utf-8 -*-
-import subprocess , argparse , sys , importlib.util , os
-from wifi import Cell , Scheme
+import argparse
+import importlib.machinery
+import importlib.util
+import os
+import subprocess
+import sys
+
 from tqdm import tqdm
+from wifi import Cell, Scheme
 
 '''
 DPWO
@@ -92,13 +98,16 @@ class NETOwner():
         return results
 
     def connect_net(self, wifi):
-        if self.os == "linux" or self.os == "linux2":
-            status = self.connect_net_linux(wifi)
-        elif self.os == "darwin":
-            status = self.connect_net_osx(wifi)
-        # elif os == "win32":
+        try:
+            if self.os == "linux" or self.os == "linux2":
+                status = self.connect_net_linux(wifi)
+            elif self.os == "darwin":
+                status = self.connect_net_osx(wifi)
+            # elif os == "win32":
 
-        return status
+            return status
+        except:
+            return False;
 
     def connect_net_osx(self, wifi):
             connect = subprocess.check_output([
