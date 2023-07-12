@@ -4,11 +4,11 @@ import importlib.machinery
 import importlib.util
 import os
 import subprocess
+import psutil
 import sys
 
-from tqdm import tqdm
 from wifi import Cell, Scheme
-from gooey import Gooey
+from gooey import Gooey, GooeyParser
 
 '''
 DPWO
@@ -86,7 +86,7 @@ class NETOwner():
         for wifi in scanner :
 
             if self.verbosity > 1:
-                tqdm.write(str(wifi))
+                print(str(wifi))
 
             # match SSID/MAC to a plugin
             for p in self.plugins : 
@@ -117,7 +117,7 @@ class NETOwner():
             ]).decode()
 
             if self.verbosity > 0:
-                tqdm.write(connect)
+                print(connect)
 
             return "Failed" not in connect and "Could not" not in connect
 
@@ -132,57 +132,86 @@ class NETOwner():
             print("No WiFi available :'(")
         else:
             connected = False
-            for wifi in tqdm(wifi_available):
-                tqdm.write("WI-FI: " + wifi["ssid"])
-                tqdm.write("Password: " + wifi["wifi_password"])
+            for wifi in wifi_available:
+                print("WI-FI: " + wifi["ssid"])
+                print("Password: " + wifi["wifi_password"])
 
                 if self.verbosity > 0:
                     if wifi["admin_login"] and wifi["admin_password"] : 
-                        tqdm.write("Admin credentials of the router: ")
-                        tqdm.write("User: " + wifi["admin_login"])
-                        tqdm.write("Password: " + wifi["admin_password"])
+                        print("Admin credentials of the router: ")
+                        print("User: " + wifi["admin_login"])
+                        print("Password: " + wifi["admin_password"])
 
                 if not connected and self.connect:
-                    tqdm.write("Trying to connect...")
+                    print("Trying to connect...")
                     if self.connect_net(wifi):
-                        tqdm.write("Connected! Have fun (:")
+                        print("Connected! Have fun (:")
                         if not self.brute :
                             connected = True
                     else:
-                        tqdm.write("Nope :(")
+                        print("Nope :(")
 
+
+
+item_default = {
+    'error_color': '#ea7878',
+    'label_color': '#4af626',
+    'help_color': '#4af626',
+    'full_width': False,
+    'validator': {
+        'type': 'local',
+        'test': 'lambda x: True',
+        'message': ''
+    },
+    'external_validator': {
+        'cmd': '',
+    }
+}
 
 def parse_args():
-    parser = argparse.ArgumentParser(
+    parser = GooeyParser(description="An tool to automatically discover passwords of nearby WIFI networks.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
-    parser.add_argument("-i", "--interface", default="wlp3s0",
-                        help="Network interface.")
+    for group in parser.parser._action_groups:
+        group.gooey_options = {'label_color': '#4af626', 'description_color': '#4af6f1'}
+
+    #get all network interfaces
+    interfaces = psutil.net_if_addrs()
+
+    
+
+    parser.add_argument("-i", "--interface", choices=interfaces.keys(), default="en0",
+                        help="Network interface.", gooey_options=item_default)
     parser.add_argument("-b", "--brute",action='store_true', default=False,
-                        help="Bruteforce all networks unregarding the SSID.")
+                        help="Bruteforce all networks unregarding the SSID.", gooey_options=item_default)
     parser.add_argument("-d", "--disable", action="store_false", default=True,
-                        help="Disable autoconnect to the first vulnerable network.")
-    parser.add_argument("-a", "--airport", default=AIRPORT_PATH,
-                        help="Airport program path.")
+                        help="Disable autoconnect to the first vulnerable network.", gooey_options=item_default)
+    # check if running on osx
+    if sys.platform == "darwin":
+        parser.add_argument("-a", "--airport", default=AIRPORT_PATH,
+                        help="Airport program path.", gooey_options=item_default)
     parser.add_argument("-v", "--verbosity", action="count",
-                        help="Increase output verbosity.")
+                        help="Increase output verbosity.", gooey_options=item_default)
     args = parser.parse_args()
 
     return args
 
+
 @Gooey(dump_build_config=False,
            program_name="DPWO",
-       program_description="An tool to automatically discover passwords of nearby WIFI networks. This is possible due to the default password schemas used by Brazilian internet providers (NET, VIVO, GVT, etc).",
-           advanced=True,
-       terminal_panel_color='#ffffff',
+       body_bg_color='#000000',
+       terminal_font_color='#4af626',
+       terminal_panel_color='#000000',
+           header_bg_color='#000000',
+           footer_bg_color='#000000',
+           sidebar_bg_color='#000000',
            )
 def main():
-    print("DPWO      v0.4")
+    print("DPWO      v0.5")
     print("≈≈≈≈≈≈≈≈≈≈≈≈≈≈")
 
     args = parse_args()
-    print(sys.argv)
 
     owner = NETOwner(
         args.interface,
@@ -191,6 +220,7 @@ def main():
         airport=args.airport,
         verbosity=args.verbosity or 0
     )
+
 
     owner.own()
 
