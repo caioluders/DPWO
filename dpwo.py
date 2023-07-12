@@ -8,6 +8,7 @@ import sys
 
 from tqdm import tqdm
 from wifi import Cell, Scheme
+from gooey import Gooey
 
 '''
 DPWO
@@ -170,12 +171,18 @@ def parse_args():
 
     return args
 
-
+@Gooey(dump_build_config=False,
+           program_name="DPWO",
+       program_description="An tool to automatically discover passwords of nearby WIFI networks. This is possible due to the default password schemas used by Brazilian internet providers (NET, VIVO, GVT, etc).",
+           advanced=True,
+       terminal_panel_color='#ffffff',
+           )
 def main():
     print("DPWO      v0.4")
     print("≈≈≈≈≈≈≈≈≈≈≈≈≈≈")
 
     args = parse_args()
+    print(sys.argv)
 
     owner = NETOwner(
         args.interface,
