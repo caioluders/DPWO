@@ -73,11 +73,45 @@ class NETOwner():
         return plugins
 
     def osx_networks(self):
+        # Try CoreWLAN first (modern macOS), fall back to airport (legacy)
+        scan = self._osx_scan_corewlan()
+        if scan is None:
+            scan = self._osx_scan_airport()
+        if scan is None:
+            self._log("Error: Could not scan WiFi. Ensure Location Services are enabled.")
+            return
+        yield from scan
+
+    def _osx_scan_corewlan(self):
+        try:
+            from CoreWLAN import CWWiFiClient
+        except ImportError:
+            return None
+
+        try:
+            client = CWWiFiClient.sharedWiFiClient()
+            iface = client.interface()
+            if iface is None:
+                return None
+            networks, error = iface.scanForNetworksWithName_error_(None, None)
+            if error or not networks:
+                return None
+            results = []
+            for net in networks:
+                ssid = net.ssid()
+                bssid = net.bssid()
+                if ssid and bssid:
+                    results.append([ssid, bssid])
+            return results if results else None
+        except Exception:
+            return None
+
+    def _osx_scan_airport(self):
         scan = ""
         for attempt in range(MAX_SCAN_RETRIES):
             try:
                 scan = subprocess.check_output([self.airport, "scan"]).decode()
-            except subprocess.CalledProcessError as e:
+            except (subprocess.CalledProcessError, OSError) as e:
                 if self.verbosity > 0:
                     tqdm.write(f"Airport scan attempt {attempt + 1} failed: {e}")
             if scan != "":
@@ -86,26 +120,24 @@ class NETOwner():
                 time.sleep(SCAN_RETRY_DELAY)
 
         if scan == "":
-            if self.verbosity > 0:
-                tqdm.write(f"Airport scan failed after {MAX_SCAN_RETRIES} attempts.")
-            return
+            return None
 
-        scan = scan.encode('ascii','ignore')
+        scan = scan.encode('ascii', 'ignore')
         scan = scan.decode().split("\n")
 
-        n_spaces = scan[0].split("SSID")[0].count(" ")+4
+        n_spaces = scan[0].split("SSID")[0].count(" ") + 4
+        scan.pop(0)
 
-        scan.pop(0) # remove header
-
+        results = []
         for wifi in scan:
             obj_t = str.split(wifi)
-            if len(obj_t) < 1 :
+            if len(obj_t) < 1:
                 continue
-            obj = [ wifi[:n_spaces].replace(" ",''), 
-                    wifi[n_spaces:].split()[0] ]
-
+            obj = [wifi[:n_spaces].replace(" ", ''),
+                   wifi[n_spaces:].split()[0]]
             if len(obj) > 0:
-                yield obj
+                results.append(obj)
+        return results if results else None
 
     def linux_networks(self):
         # Try nmcli first, then iwd (D-Bus), then iwlist (needs sudo)
