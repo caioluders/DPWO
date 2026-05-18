@@ -1,3 +1,4 @@
+import os
 import subprocess
 import sys
 import tempfile
@@ -387,3 +388,111 @@ class TestOwnPassiveMode:
         with patch.object(owner, "scan_network", return_value=[self.WIFI_RESULT]):
             owner.own()
         # tqdm.write goes to stderr by default
+
+
+class TestScanNetworkWithCallback:
+    WIFI_RESULT = {"ssid": "CLARO_1234", "mac": "AA:BB:CC:DD:EE:FF",
+                   "wifi_password": "CCDDEEFF", "admin_login": False,
+                   "admin_password": False}
+
+    def test_calls_on_result_per_network(self, dpwo_module, mock_wifi):
+        fake_cell = MagicMock()
+        fake_cell.ssid = "CLARO_1234"
+        fake_cell.address = "AA:BB:CC:DD:EE:FF"
+        fake_cell.signal = -50
+        fake_cell.channel = 6
+        mock_wifi.Cell.all.return_value = [fake_cell]
+
+        owner = dpwo_module.NETOwner("wlan0")
+        owner.os = "linux"
+
+        results_received = []
+        owner.scan_network_with_callback(
+            on_result=lambda r: results_received.append(r),
+        )
+        assert len(results_received) >= 1
+        assert results_received[0]["ssid"] == "CLARO_1234"
+
+    def test_calls_on_done_with_all_results(self, dpwo_module, mock_wifi):
+        fake_cell = MagicMock()
+        fake_cell.ssid = "CLARO_1234"
+        fake_cell.address = "AA:BB:CC:DD:EE:FF"
+        fake_cell.signal = -50
+        fake_cell.channel = 6
+        mock_wifi.Cell.all.return_value = [fake_cell]
+
+        owner = dpwo_module.NETOwner("wlan0")
+        owner.os = "linux"
+
+        done_results = []
+        owner.scan_network_with_callback(
+            on_done=lambda r: done_results.extend(r),
+        )
+        assert len(done_results) >= 1
+
+    def test_calls_on_error_for_unsupported_platform(self, dpwo_module):
+        owner = dpwo_module.NETOwner("wlan0")
+        owner.os = "freebsd"
+
+        errors = []
+        owner.scan_network_with_callback(on_error=lambda e: errors.append(e))
+        assert len(errors) == 1
+        assert "freebsd" in errors[0]
+
+    def test_empty_scan_calls_on_done(self, dpwo_module, mock_wifi):
+        mock_wifi.Cell.all.return_value = []
+
+        owner = dpwo_module.NETOwner("wlan0")
+        owner.os = "linux"
+
+        done_called = []
+        owner.scan_network_with_callback(on_done=lambda r: done_called.append(r))
+        assert len(done_called) == 1
+        assert done_called[0] == []
+
+
+class TestConnectAndVerify:
+    def test_returns_connected(self, dpwo_module):
+        owner = dpwo_module.NETOwner("wlan0")
+        with patch.object(owner, "connect_net", return_value=True):
+            with patch.object(owner, "verify_connection", return_value=True):
+                assert owner.connect_and_verify({"ssid": "X"}) == "connected"
+
+    def test_returns_no_internet(self, dpwo_module):
+        owner = dpwo_module.NETOwner("wlan0")
+        with patch.object(owner, "connect_net", return_value=True):
+            with patch.object(owner, "verify_connection", return_value=False):
+                assert owner.connect_and_verify({"ssid": "X"}) == "no_internet"
+
+    def test_returns_failed(self, dpwo_module):
+        owner = dpwo_module.NETOwner("wlan0")
+        with patch.object(owner, "connect_net", return_value=False):
+            assert owner.connect_and_verify({"ssid": "X"}) == "failed"
+
+
+class TestLogCallback:
+    def test_log_callback_is_used(self, dpwo_module):
+        logs = []
+        owner = dpwo_module.NETOwner("wlan0", log_callback=lambda m: logs.append(m))
+        owner.os = "freebsd"
+        owner.scan_network()
+        assert any("freebsd" in msg for msg in logs)
+
+    def test_default_uses_print(self, dpwo_module, capsys):
+        owner = dpwo_module.NETOwner("wlan0")
+        owner.os = "freebsd"
+        owner.scan_network()
+        captured = capsys.readouterr()
+        assert "freebsd" in captured.out
+
+
+class TestGetBasePath:
+    def test_returns_script_dir(self, dpwo_module):
+        result = dpwo_module._get_base_path()
+        assert os.path.isdir(result)
+        assert os.path.exists(os.path.join(result, "plugins"))
+
+    def test_returns_meipass_when_frozen(self, dpwo_module):
+        with patch.object(sys, "frozen", True, create=True):
+            with patch.object(sys, "_MEIPASS", "/tmp/fake_meipass", create=True):
+                assert dpwo_module._get_base_path() == "/tmp/fake_meipass"

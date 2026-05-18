@@ -26,25 +26,38 @@ MAX_SCAN_RETRIES = 5
 SCAN_RETRY_DELAY = 1
 
 
+def _get_base_path():
+    if getattr(sys, 'frozen', False):
+        return sys._MEIPASS
+    return os.path.dirname(os.path.abspath(__file__))
+
+
 class NETOwner():
-    def __init__(self, iface, connect=False,brute = False,
-                 airport=AIRPORT_PATH, verbosity=0):
+    def __init__(self, iface, connect=False, brute=False,
+                 airport=AIRPORT_PATH, verbosity=0, log_callback=None):
         self.iface = iface
         self.brute = brute
         self.connect = connect
         self.airport = airport
         self.verbosity = verbosity
+        self.log_callback = log_callback
         self.os = sys.platform
         self.plugins = self.load_plugins()
 
+    def _log(self, msg):
+        if self.log_callback:
+            self.log_callback(msg)
+        else:
+            print(msg)
+
     def load_plugins(self) :
-        plugin_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "plugins")
+        plugin_folder = os.path.join(_get_base_path(), "plugins")
         plugins = []
 
         try:
             possible_plugins = os.listdir(plugin_folder)
         except OSError as e:
-            print(f"Error: Could not load plugins from {plugin_folder}: {e}")
+            self._log(f"Error: Could not load plugins from {plugin_folder}: {e}")
             return plugins
 
         for f in possible_plugins :
@@ -59,7 +72,7 @@ class NETOwner():
                 spec.loader.exec_module(p)
                 plugins.append(p)
             except Exception as e:
-                print(f"Warning: Failed to load plugin {f}: {e}")
+                self._log(f"Warning: Failed to load plugin {f}: {e}")
 
         return plugins
 
@@ -100,13 +113,13 @@ class NETOwner():
 
     def linux_networks(self):
         if Cell is None:
-            print("Error: 'wifi' package not installed (required for Linux scanning).")
+            self._log("Error: 'wifi' package not installed (required for Linux scanning).")
             return
 
         try:
             scan = Cell.all(self.iface)
         except Exception as e:
-            print(f"Error scanning with interface '{self.iface}': {e}")
+            self._log(f"Error scanning with interface '{self.iface}': {e}")
             return
 
         for wifi in scan:
@@ -120,7 +133,7 @@ class NETOwner():
                 text=True, timeout=30,
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as e:
-            print(f"Error scanning WiFi networks: {e}")
+            self._log(f"Error scanning WiFi networks: {e}")
             return
 
         current_ssid = None
@@ -143,7 +156,7 @@ class NETOwner():
         elif self.os == "win32":
             scanner = self.windows_networks()
         else:
-            print(f"Error: Unsupported platform '{self.os}'.")
+            self._log(f"Error: Unsupported platform '{self.os}'.")
             return []
 
         results = []
@@ -171,7 +184,7 @@ class NETOwner():
             elif self.os == "win32":
                 status = self.connect_net_windows(wifi)
             else:
-                print(f"Error: Connection not supported on '{self.os}'.")
+                self._log(f"Error: Connection not supported on '{self.os}'.")
                 return False
 
             return status
@@ -284,6 +297,47 @@ class NETOwner():
             if self.verbosity > 0:
                 tqdm.write(f"Verification failed: {e}")
             return False
+
+    def scan_network_with_callback(self, on_result=None, on_done=None, on_error=None):
+        if self.os == "linux" or self.os == "linux2":
+            scanner = self.linux_networks()
+        elif self.os == "darwin":
+            scanner = self.osx_networks()
+        elif self.os == "win32":
+            scanner = self.windows_networks()
+        else:
+            if on_error:
+                on_error(f"Unsupported platform '{self.os}'.")
+            return
+
+        results = []
+        try:
+            for wifi in scanner:
+                for p in self.plugins:
+                    if self.brute and p.__name__ == "brute":
+                        for b in p.own(wifi[0], wifi[1]):
+                            results.append(b)
+                            if on_result:
+                                on_result(b)
+                    elif p.is_vuln(wifi[0], wifi[1]):
+                        r = p.own(wifi[0], wifi[1])
+                        results.append(r)
+                        if on_result:
+                            on_result(r)
+        except Exception as e:
+            if on_error:
+                on_error(str(e))
+            return
+
+        if on_done:
+            on_done(results)
+
+    def connect_and_verify(self, wifi):
+        if not self.connect_net(wifi):
+            return "failed"
+        if self.verify_connection():
+            return "connected"
+        return "no_internet"
 
     def own(self):
         wifi_available = self.scan_network()
