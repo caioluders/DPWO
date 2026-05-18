@@ -5,6 +5,7 @@ import importlib.util
 import os
 import subprocess
 import sys
+import tempfile
 import time
 
 from tqdm import tqdm
@@ -112,11 +113,35 @@ class NETOwner():
             obj = [wifi.ssid, wifi.address, wifi.signal, wifi.channel, wifi]
             yield obj
 
+    def windows_networks(self):
+        try:
+            scan = subprocess.check_output(
+                ["netsh", "wlan", "show", "networks", "mode=bssid"],
+                text=True, timeout=30,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as e:
+            print(f"Error scanning WiFi networks: {e}")
+            return
+
+        current_ssid = None
+        current_mac = None
+
+        for line in scan.splitlines():
+            line = line.strip()
+            if line.startswith("SSID") and "BSSID" not in line:
+                current_ssid = line.split(":", 1)[1].strip()
+            elif line.startswith("BSSID"):
+                current_mac = line.split(":", 1)[1].strip()
+                if current_ssid and current_mac:
+                    yield [current_ssid, current_mac]
+
     def scan_network(self):
         if self.os == "linux" or self.os == "linux2":
             scanner = self.linux_networks()
         elif self.os == "darwin":
             scanner = self.osx_networks()
+        elif self.os == "win32":
+            scanner = self.windows_networks()
         else:
             print(f"Error: Unsupported platform '{self.os}'.")
             return []
@@ -143,6 +168,8 @@ class NETOwner():
                 status = self.connect_net_linux(wifi)
             elif self.os == "darwin":
                 status = self.connect_net_osx(wifi)
+            elif self.os == "win32":
+                status = self.connect_net_windows(wifi)
             else:
                 print(f"Error: Connection not supported on '{self.os}'.")
                 return False
@@ -183,10 +210,72 @@ class NETOwner():
             tqdm.write(result.stdout.strip())
         return result.returncode == 0
 
+    def connect_net_windows(self, wifi):
+        profile_xml = f"""<?xml version="1.0"?>
+<WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
+    <name>{wifi["ssid"]}</name>
+    <SSIDConfig>
+        <SSID>
+            <name>{wifi["ssid"]}</name>
+        </SSID>
+    </SSIDConfig>
+    <connectionType>ESS</connectionType>
+    <connectionMode>auto</connectionMode>
+    <MSM>
+        <security>
+            <authEncryption>
+                <authentication>WPA2PSK</authentication>
+                <encryption>AES</encryption>
+                <useOneX>false</useOneX>
+            </authEncryption>
+            <sharedKey>
+                <keyType>passPhrase</keyType>
+                <protected>false</protected>
+                <keyMaterial>{wifi["wifi_password"]}</keyMaterial>
+            </sharedKey>
+        </security>
+    </MSM>
+</WLANProfile>"""
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".xml", delete=False
+            ) as f:
+                f.write(profile_xml)
+                profile_path = f.name
+
+            add_result = subprocess.run(
+                ["netsh", "wlan", "add", "profile", f"filename={profile_path}"],
+                capture_output=True, text=True, timeout=30,
+            )
+            os.unlink(profile_path)
+
+            if add_result.returncode != 0:
+                if self.verbosity > 0:
+                    tqdm.write(f"Failed to add profile: {add_result.stderr.strip()}")
+                return False
+
+            iface_args = [f"interface={self.iface}"] if self.iface != "Wi-Fi" else []
+            connect_result = subprocess.run(
+                ["netsh", "wlan", "connect", f"name={wifi['ssid']}"] + iface_args,
+                capture_output=True, text=True, timeout=30,
+            )
+            if self.verbosity > 0:
+                tqdm.write(connect_result.stdout.strip())
+            return connect_result.returncode == 0
+        except (subprocess.TimeoutExpired, OSError) as e:
+            if self.verbosity > 0:
+                tqdm.write(f"Windows connection error: {e}")
+            return False
+
     def verify_connection(self):
         try:
+            if self.os == "win32":
+                cmd = ["ping", "-n", "1", "-w", "3000", "8.8.8.8"]
+            else:
+                cmd = ["ping", "-c", "1", "-W", "3", "8.8.8.8"]
             result = subprocess.run(
-                ["ping", "-c", "1", "-W", "3", "8.8.8.8"],
+                cmd,
                 capture_output=True,
                 timeout=10,
             )
@@ -237,7 +326,8 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
-    parser.add_argument("-i", "--interface", default="wlp3s0",
+    default_iface = "Wi-Fi" if sys.platform == "win32" else "wlp3s0"
+    parser.add_argument("-i", "--interface", default=default_iface,
                         help="Network interface.")
     parser.add_argument("-b", "--brute",action='store_true', default=False,
                         help="Bruteforce all networks unregarding the SSID.")
@@ -253,7 +343,7 @@ def parse_args():
 
 
 def main():
-    print("DPWO      v0.4")
+    print("DPWO      v0.5")
     print("≈≈≈≈≈≈≈≈≈≈≈≈≈≈")
 
     args = parse_args()

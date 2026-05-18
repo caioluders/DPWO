@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import tempfile
 from unittest.mock import MagicMock, patch, call
 
 import pytest
@@ -103,7 +104,7 @@ class TestNETOwnerScanNetwork:
 
     def test_scan_unsupported_platform(self, dpwo_module):
         owner = dpwo_module.NETOwner("wlan0")
-        owner.os = "win32"
+        owner.os = "freebsd"
         results = owner.scan_network()
         assert results == []
 
@@ -119,7 +120,7 @@ class TestNETOwnerScanNetwork:
 class TestNETOwnerConnect:
     def test_connect_unsupported_platform(self, dpwo_module):
         owner = dpwo_module.NETOwner("wlan0")
-        owner.os = "win32"
+        owner.os = "freebsd"
         result = owner.connect_net({"ssid": "test", "wifi_password": "pass"})
         assert result is False
 
@@ -176,6 +177,96 @@ class TestConnectNetOSX:
         assert result is False
 
 
+class TestWindowsNetworks:
+    NETSH_OUTPUT = (
+        "Interface name : Wi-Fi\n"
+        "There are 2 networks currently visible.\n"
+        "\n"
+        "SSID 1 : CLARO_1234\n"
+        "    Network type            : Infrastructure\n"
+        "    Authentication          : WPA2-Personal\n"
+        "    Encryption              : CCMP\n"
+        "    BSSID 1                 : aa:bb:cc:dd:ee:ff\n"
+        "         Signal             : 80%\n"
+        "\n"
+        "SSID 2 : VIVO-5678\n"
+        "    Network type            : Infrastructure\n"
+        "    Authentication          : WPA2-Personal\n"
+        "    Encryption              : CCMP\n"
+        "    BSSID 1                 : 11:22:33:44:55:66\n"
+        "         Signal             : 60%\n"
+    )
+
+    def test_parses_networks(self, dpwo_module):
+        owner = dpwo_module.NETOwner("Wi-Fi")
+        owner.os = "win32"
+        with patch("subprocess.check_output", return_value=self.NETSH_OUTPUT):
+            results = list(owner.windows_networks())
+        assert len(results) == 2
+        assert results[0] == ["CLARO_1234", "aa:bb:cc:dd:ee:ff"]
+        assert results[1] == ["VIVO-5678", "11:22:33:44:55:66"]
+
+    def test_scan_error(self, dpwo_module):
+        owner = dpwo_module.NETOwner("Wi-Fi")
+        owner.os = "win32"
+        with patch("subprocess.check_output",
+                    side_effect=subprocess.CalledProcessError(1, "netsh")):
+            results = list(owner.windows_networks())
+        assert results == []
+
+    def test_scan_integration_with_scan_network(self, dpwo_module):
+        owner = dpwo_module.NETOwner("Wi-Fi")
+        owner.os = "win32"
+        with patch("subprocess.check_output", return_value=self.NETSH_OUTPUT):
+            results = owner.scan_network()
+        claro = [r for r in results if r["ssid"] == "CLARO_1234"]
+        assert len(claro) == 1
+        assert claro[0]["wifi_password"] == "CCDDEEFF"
+
+
+class TestConnectNetWindows:
+    def test_success(self, dpwo_module):
+        owner = dpwo_module.NETOwner("Wi-Fi")
+        owner.os = "win32"
+        add_result = MagicMock(returncode=0, stdout="", stderr="")
+        connect_result = MagicMock(returncode=0, stdout="connected")
+        with patch("subprocess.run", side_effect=[add_result, connect_result]) as mock_run:
+            with patch("tempfile.NamedTemporaryFile", wraps=tempfile.NamedTemporaryFile):
+                result = owner.connect_net_windows(
+                    {"ssid": "CLARO_1234", "wifi_password": "CCDDEEFF"}
+                )
+        assert result is True
+
+    def test_profile_add_failure(self, dpwo_module):
+        owner = dpwo_module.NETOwner("Wi-Fi")
+        owner.os = "win32"
+        add_result = MagicMock(returncode=1, stdout="", stderr="Error")
+        with patch("subprocess.run", return_value=add_result):
+            result = owner.connect_net_windows(
+                {"ssid": "CLARO_1234", "wifi_password": "wrong"}
+            )
+        assert result is False
+
+    def test_connect_failure(self, dpwo_module):
+        owner = dpwo_module.NETOwner("Wi-Fi")
+        owner.os = "win32"
+        add_result = MagicMock(returncode=0, stdout="", stderr="")
+        connect_result = MagicMock(returncode=1, stdout="failed")
+        with patch("subprocess.run", side_effect=[add_result, connect_result]):
+            result = owner.connect_net_windows(
+                {"ssid": "CLARO_1234", "wifi_password": "bad"}
+            )
+        assert result is False
+
+    def test_via_connect_net_dispatcher(self, dpwo_module):
+        owner = dpwo_module.NETOwner("Wi-Fi")
+        owner.os = "win32"
+        with patch.object(owner, "connect_net_windows", return_value=True) as mock_win:
+            result = owner.connect_net({"ssid": "test", "wifi_password": "pass"})
+        assert result is True
+        mock_win.assert_called_once()
+
+
 class TestVerifyConnection:
     def test_success(self, dpwo_module):
         owner = dpwo_module.NETOwner("wlan0")
@@ -193,6 +284,15 @@ class TestVerifyConnection:
         owner = dpwo_module.NETOwner("wlan0")
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("ping", 10)):
             assert owner.verify_connection() is False
+
+    def test_windows_ping_flags(self, dpwo_module):
+        owner = dpwo_module.NETOwner("Wi-Fi")
+        owner.os = "win32"
+        mock_result = MagicMock(returncode=0)
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            owner.verify_connection()
+        cmd = mock_run.call_args[0][0]
+        assert cmd == ["ping", "-n", "1", "-w", "3000", "8.8.8.8"]
 
 
 class TestOSXNetworksRetry:
