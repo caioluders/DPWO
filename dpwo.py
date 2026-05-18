@@ -508,7 +508,61 @@ class NETOwner():
                 tqdm.write(f"Verification failed: {e}")
             return False
 
-    def scan_network_with_callback(self, on_result=None, on_done=None, on_error=None):
+    def get_connected_ssid(self):
+        try:
+            if self.os == "linux" or self.os == "linux2":
+                # Try nmcli
+                try:
+                    out = subprocess.check_output(
+                        ["nmcli", "-t", "-f", "ACTIVE,SSID", "dev", "wifi"],
+                        text=True, timeout=5,
+                    )
+                    for line in out.strip().splitlines():
+                        if line.startswith("yes:"):
+                            return line.split(":", 1)[1]
+                except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                    pass
+                # Try iwd
+                try:
+                    out = subprocess.check_output(
+                        ["iwctl", "station", self.iface, "show"],
+                        text=True, timeout=5,
+                    )
+                    import re
+                    for line in out.splitlines():
+                        cleaned = re.sub(r'\x1b\[[0-9;]*m', '', line).strip()
+                        if cleaned.startswith("Connected network"):
+                            return cleaned.split(None, 2)[-1].strip()
+                except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                    pass
+            elif self.os == "darwin":
+                try:
+                    out = subprocess.check_output(
+                        ["networksetup", "-getairportnetwork", self.iface],
+                        text=True, timeout=5,
+                    )
+                    if "Current Wi-Fi Network:" in out:
+                        return out.split(":", 1)[1].strip()
+                except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                    pass
+            elif self.os == "win32":
+                try:
+                    out = subprocess.check_output(
+                        ["netsh", "wlan", "show", "interfaces"],
+                        text=True, timeout=5,
+                    )
+                    for line in out.splitlines():
+                        line = line.strip()
+                        if line.startswith("SSID") and "BSSID" not in line:
+                            return line.split(":", 1)[1].strip()
+                except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                    pass
+        except Exception:
+            pass
+        return None
+
+    def scan_network_with_callback(self, on_network=None, on_result=None,
+                                   on_done=None, on_error=None):
         if self.os == "linux" or self.os == "linux2":
             scanner = self.linux_networks()
         elif self.os == "darwin":
@@ -523,17 +577,20 @@ class NETOwner():
         results = []
         try:
             for wifi in scanner:
+                if on_network:
+                    on_network(wifi[0], wifi[1] if len(wifi) > 1 else "")
+
                 for p in self.plugins:
                     if self.brute and p.__name__ == "brute":
                         for b in p.own(wifi[0], wifi[1]):
                             results.append(b)
                             if on_result:
-                                on_result(b)
+                                on_result(b, p.__name__)
                     elif p.is_vuln(wifi[0], wifi[1]):
                         r = p.own(wifi[0], wifi[1])
                         results.append(r)
                         if on_result:
-                            on_result(r)
+                            on_result(r, p.__name__)
         except Exception as e:
             if on_error:
                 on_error(str(e))
@@ -543,6 +600,10 @@ class NETOwner():
             on_done(results)
 
     def connect_and_verify(self, wifi):
+        connected_ssid = self.get_connected_ssid()
+        if connected_ssid and connected_ssid == wifi["ssid"]:
+            self._log(f"Skipping {wifi['ssid']}: already connected.")
+            return "skipped"
         if not self.connect_net(wifi):
             return "failed"
         if self.verify_connection():

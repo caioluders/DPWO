@@ -387,7 +387,7 @@ class TestScanNetworkWithCallback:
         with patch("subprocess.check_output",
                     return_value="CLARO_1234:AA\\:BB\\:CC\\:DD\\:EE\\:FF:80:6\n"):
             owner.scan_network_with_callback(
-                on_result=lambda r: results_received.append(r),
+                on_result=lambda r, p: results_received.append(r),
             )
         assert len(results_received) >= 1
         assert results_received[0]["ssid"] == "CLARO_1234"

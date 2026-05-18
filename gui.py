@@ -103,8 +103,8 @@ class DPWOApp(ctk.CTk):
         super().__init__()
 
         self.title("DPWO - WiFi Gratis")
-        self.geometry("700x600")
-        self.minsize(600, 500)
+        self.geometry("750x700")
+        self.minsize(650, 600)
 
         self._scanning = False
         self._owner = None
@@ -236,7 +236,7 @@ class DPWOApp(ctk.CTk):
             log_frame, text="Log:", font=ctk.CTkFont(weight="bold")
         ).pack(anchor="w", padx=10, pady=(5, 0))
 
-        self._log_text = ctk.CTkTextbox(log_frame, height=90)
+        self._log_text = ctk.CTkTextbox(log_frame, height=150)
         self._log_text.pack(fill="x", padx=10, pady=5)
         self._log_text.configure(state="disabled")
 
@@ -292,18 +292,26 @@ class DPWOApp(ctk.CTk):
 
     def _scan_thread(self):
         self._owner.scan_network_with_callback(
-            on_result=lambda r: self.after(0, self._add_result, r),
+            on_network=lambda ssid, bssid: self.after(
+                0, self._log, f"[scan] {ssid}  ({bssid})"
+            ),
+            on_result=lambda r, plugin: self.after(
+                0, self._add_result, r, plugin
+            ),
             on_done=lambda results: self.after(0, self._scan_done, results),
             on_error=lambda err: self.after(0, self._scan_error, err),
         )
 
-    def _add_result(self, wifi):
+    def _add_result(self, wifi, plugin=""):
         self._results.append(wifi)
         self._tree.insert(
             "", "end",
             values=(wifi["ssid"], wifi["wifi_password"], "--"),
         )
-        self._log(f"Encontrada: {wifi['ssid']}")
+        self._log(
+            f"[{plugin}] Vulneravel: {wifi['ssid']}  "
+            f"senha: {wifi['wifi_password']}"
+        )
 
     def _scan_done(self, results):
         self._progress.stop()
@@ -347,7 +355,8 @@ class DPWOApp(ctk.CTk):
 
     def _autoconnect_thread(self):
         for i, wifi in enumerate(self._results):
-            self.after(0, self._log, f"Tentando conectar em {wifi['ssid']}...")
+            self.after(0, self._log,
+                       f"Tentando {wifi['ssid']} com senha {wifi['wifi_password']}...")
             self.after(0, self._update_row_status, i, "Conectando...")
             status = self._owner.connect_and_verify(wifi)
             if status == "connected":
@@ -356,6 +365,9 @@ class DPWOApp(ctk.CTk):
                 self.after(0, self._log, f"Conectado e verificado: {wifi['ssid']}")
                 self.after(0, self._finish_connect)
                 return
+            elif status == "skipped":
+                self.after(0, self._update_row_status, i, "Ja conectado")
+                self.after(0, self._log, f"{wifi['ssid']}: pulada (ja conectado)")
             elif status == "no_internet":
                 self.after(0, self._update_row_status, i, "Sem internet")
                 self.after(0, self._log, f"{wifi['ssid']}: sem acesso a internet")
