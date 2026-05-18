@@ -13,19 +13,59 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("green")
 
 
+def _detect_linux_interfaces():
+    # Try nmcli
+    try:
+        out = subprocess.check_output(
+            ["nmcli", "-t", "-f", "DEVICE,TYPE", "device", "status"],
+            text=True, timeout=10,
+        )
+        ifaces = [
+            line.split(":")[0]
+            for line in out.strip().splitlines()
+            if "wifi" in line.split(":")[1]
+        ]
+        if ifaces:
+            return ifaces
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        pass
+
+    # Try iwd via busctl
+    import re
+    try:
+        tree = subprocess.check_output(
+            ["busctl", "tree", "net.connman.iwd"],
+            text=True, timeout=10,
+        )
+        paths = set(re.findall(r'(/net/connman/iwd/\d+/\d+)\b', tree))
+        ifaces = []
+        for path in paths:
+            try:
+                out = subprocess.check_output(
+                    [
+                        "busctl", "get-property", "net.connman.iwd",
+                        path, "net.connman.iwd.Device", "Name",
+                    ],
+                    text=True, timeout=5,
+                )
+                match = re.search(r'"(.+)"', out)
+                if match:
+                    ifaces.append(match.group(1))
+            except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                continue
+        if ifaces:
+            return ifaces
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        pass
+
+    return ["wlan0"]
+
+
 def detect_interfaces():
     platform = sys.platform
     try:
         if platform == "linux" or platform == "linux2":
-            out = subprocess.check_output(
-                ["nmcli", "-t", "-f", "DEVICE,TYPE", "device", "status"],
-                text=True, timeout=10,
-            )
-            return [
-                line.split(":")[0]
-                for line in out.strip().splitlines()
-                if "wifi" in line.split(":")[1]
-            ] or ["wlp3s0"]
+            return _detect_linux_interfaces()
         elif platform == "darwin":
             out = subprocess.check_output(
                 ["networksetup", "-listallhardwareports"],
@@ -55,7 +95,7 @@ def detect_interfaces():
 
     if platform == "win32":
         return ["Wi-Fi"]
-    return ["wlp3s0"]
+    return ["wlan0"]
 
 
 class DPWOApp(ctk.CTk):

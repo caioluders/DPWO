@@ -108,14 +108,13 @@ class NETOwner():
                 yield obj
 
     def linux_networks(self):
-        # Try nmcli first, fall back to iwlist
-        scan = self._linux_scan_nmcli()
-        if scan is None:
-            scan = self._linux_scan_iwlist()
-        if scan is None:
-            self._log(f"Error: Could not scan. Install NetworkManager (nmcli) or wireless-tools (iwlist).")
-            return
-        yield from scan
+        # Try nmcli first, then iwd (D-Bus), then iwlist (needs sudo)
+        for scanner in (self._linux_scan_nmcli, self._linux_scan_iwd, self._linux_scan_iwlist):
+            scan = scanner()
+            if scan is not None:
+                yield from scan
+                return
+        self._log("Error: Could not scan. Install NetworkManager (nmcli) or iwd (iwctl).")
 
     def _linux_scan_nmcli(self):
         try:
@@ -142,6 +141,113 @@ class NETOwner():
             if ssid and bssid:
                 results.append([ssid, bssid])
         return results
+
+    def _linux_scan_iwd(self):
+        import re
+
+        # Find the iwd station object path for our interface
+        try:
+            tree = subprocess.check_output(
+                ["busctl", "tree", "net.connman.iwd"],
+                text=True, timeout=10,
+            )
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            return None
+
+        # Find station path by checking Device.Name for each candidate
+        station_path = None
+        candidate_paths = re.findall(r'(/net/connman/iwd/\d+/\d+)\b', tree)
+        # Remove duplicates, keep order
+        seen = set()
+        candidate_paths = [p for p in candidate_paths if not (p in seen or seen.add(p))]
+
+        for path in candidate_paths:
+            try:
+                out = subprocess.check_output(
+                    [
+                        "busctl", "get-property", "net.connman.iwd",
+                        path, "net.connman.iwd.Device", "Name",
+                    ],
+                    text=True, timeout=5,
+                )
+                if f'"{self.iface}"' in out:
+                    station_path = path
+                    break
+            except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                continue
+
+        if not station_path:
+            return None
+
+        # Trigger a scan
+        try:
+            subprocess.run(
+                [
+                    "busctl", "call", "net.connman.iwd",
+                    station_path, "net.connman.iwd.Station", "Scan",
+                ],
+                capture_output=True, timeout=10,
+            )
+            time.sleep(3)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+        # Get ordered networks — returns array of (object_path, signal)
+        try:
+            out = subprocess.check_output(
+                [
+                    "busctl", "call", "net.connman.iwd",
+                    station_path, "net.connman.iwd.Station",
+                    "GetOrderedNetworks",
+                ],
+                text=True, timeout=10,
+            )
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            return None
+
+        # Parse network paths from the output
+        network_paths = re.findall(r'"(/net/connman/iwd/[^"]+)"', out)
+
+        results = []
+        for net_path in network_paths:
+            # Get SSID from the Network object
+            try:
+                name_out = subprocess.check_output(
+                    [
+                        "busctl", "get-property", "net.connman.iwd",
+                        net_path, "net.connman.iwd.Network", "Name",
+                    ],
+                    text=True, timeout=5,
+                )
+                ssid_match = re.search(r'"(.+)"', name_out)
+                if not ssid_match:
+                    continue
+                ssid = ssid_match.group(1)
+            except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                continue
+
+            # Find BSS children to get BSSIDs
+            bss_paths = re.findall(
+                re.escape(net_path) + r'/[0-9a-f]+',
+                tree,
+            )
+            for bss_path in bss_paths:
+                try:
+                    addr_out = subprocess.check_output(
+                        [
+                            "busctl", "get-property", "net.connman.iwd",
+                            bss_path, "net.connman.iwd.BasicServiceSet",
+                            "Address",
+                        ],
+                        text=True, timeout=5,
+                    )
+                    addr_match = re.search(r'"([0-9a-fA-F:]{17})"', addr_out)
+                    if addr_match:
+                        results.append([ssid, addr_match.group(1)])
+                except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                    continue
+
+        return results if results else None
 
     def _linux_scan_iwlist(self):
         try:
@@ -248,6 +354,17 @@ class NETOwner():
         return result.returncode == 0
 
     def connect_net_linux(self, wifi):
+        # Try nmcli first, then iwctl
+        result = self._linux_connect_nmcli(wifi)
+        if result is not None:
+            return result
+        result = self._linux_connect_iwctl(wifi)
+        if result is not None:
+            return result
+        self._log("Error: Neither nmcli nor iwctl found. Install NetworkManager or iwd.")
+        return False
+
+    def _linux_connect_nmcli(self, wifi):
         try:
             result = subprocess.run(
                 [
@@ -261,8 +378,25 @@ class NETOwner():
                 timeout=30,
             )
         except FileNotFoundError:
-            self._log("Error: nmcli not found. Install NetworkManager to connect.")
-            return False
+            return None
+        if self.verbosity > 0:
+            tqdm.write(result.stdout.strip())
+        return result.returncode == 0
+
+    def _linux_connect_iwctl(self, wifi):
+        try:
+            result = subprocess.run(
+                [
+                    "iwctl", "station", self.iface,
+                    "connect", wifi["ssid"],
+                    "--passphrase", wifi["wifi_password"],
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except FileNotFoundError:
+            return None
         if self.verbosity > 0:
             tqdm.write(result.stdout.strip())
         return result.returncode == 0
