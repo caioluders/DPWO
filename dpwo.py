@@ -10,10 +10,6 @@ import time
 
 from tqdm import tqdm
 
-try:
-    from wifi import Cell
-except ImportError:
-    Cell = None
 
 '''
 DPWO
@@ -112,19 +108,31 @@ class NETOwner():
                 yield obj
 
     def linux_networks(self):
-        if Cell is None:
-            self._log("Error: 'wifi' package not installed (required for Linux scanning).")
-            return
-
         try:
-            scan = Cell.all(self.iface)
-        except Exception as e:
+            scan = subprocess.check_output(
+                [
+                    "nmcli", "-t", "-f", "SSID,BSSID,SIGNAL,CHAN",
+                    "device", "wifi", "list",
+                    "ifname", self.iface,
+                    "--rescan", "yes",
+                ],
+                text=True, timeout=30,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as e:
             self._log(f"Error scanning with interface '{self.iface}': {e}")
             return
 
-        for wifi in scan:
-            obj = [wifi.ssid, wifi.address, wifi.signal, wifi.channel, wifi]
-            yield obj
+        import re
+        for line in scan.strip().splitlines():
+            # nmcli -t escapes : as \: inside values; split on unescaped :
+            parts = re.split(r'(?<!\\):', line)
+            if len(parts) < 2:
+                continue
+            ssid = parts[0].replace("\\:", ":").strip()
+            bssid = parts[1].replace("\\:", ":").strip()
+            if not ssid or not bssid:
+                continue
+            yield [ssid, bssid]
 
     def windows_networks(self):
         try:

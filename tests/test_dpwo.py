@@ -8,16 +8,8 @@ import pytest
 
 
 @pytest.fixture
-def mock_wifi():
-    """Mock the wifi module so dpwo can be imported without it installed."""
-    wifi_mock = MagicMock()
-    with patch.dict(sys.modules, {"wifi": wifi_mock}):
-        yield wifi_mock
-
-
-@pytest.fixture
-def dpwo_module(mock_wifi):
-    """Import dpwo with wifi mocked out."""
+def dpwo_module():
+    """Import dpwo module (reimport to avoid stale state)."""
     if "dpwo" in sys.modules:
         del sys.modules["dpwo"]
     import dpwo
@@ -73,34 +65,26 @@ class TestNETOwnerLoadPlugins:
 
 
 class TestNETOwnerScanNetwork:
-    def test_scan_finds_vulnerable_network(self, dpwo_module, mock_wifi):
-        fake_cell = MagicMock()
-        fake_cell.ssid = "CLARO_1234"
-        fake_cell.address = "AA:BB:CC:DD:EE:FF"
-        fake_cell.signal = -50
-        fake_cell.channel = 6
-        mock_wifi.Cell.all.return_value = [fake_cell]
+    NMCLI_OUTPUT = "CLARO_1234:AA\\:BB\\:CC\\:DD\\:EE\\:FF:80:6\n"
 
+    def test_scan_finds_vulnerable_network(self, dpwo_module):
         owner = dpwo_module.NETOwner("wlan0")
         owner.os = "linux"
-        results = owner.scan_network()
+        with patch("subprocess.check_output",
+                    return_value="CLARO_1234:AA\\:BB\\:CC\\:DD\\:EE\\:FF:80:6\n"):
+            results = owner.scan_network()
 
         assert len(results) >= 1
         match = [r for r in results if r["ssid"] == "CLARO_1234"]
         assert len(match) == 1
         assert match[0]["wifi_password"] == "CCDDEEFF"
 
-    def test_scan_ignores_non_vulnerable(self, dpwo_module, mock_wifi):
-        fake_cell = MagicMock()
-        fake_cell.ssid = "MyHomeWiFi"
-        fake_cell.address = "AA:BB:CC:DD:EE:FF"
-        fake_cell.signal = -50
-        fake_cell.channel = 6
-        mock_wifi.Cell.all.return_value = [fake_cell]
-
+    def test_scan_ignores_non_vulnerable(self, dpwo_module):
         owner = dpwo_module.NETOwner("wlan0")
         owner.os = "linux"
-        results = owner.scan_network()
+        with patch("subprocess.check_output",
+                    return_value="MyHomeWiFi:AA\\:BB\\:CC\\:DD\\:EE\\:FF:80:6\n"):
+            results = owner.scan_network()
         assert results == []
 
     def test_scan_unsupported_platform(self, dpwo_module):
@@ -109,12 +93,12 @@ class TestNETOwnerScanNetwork:
         results = owner.scan_network()
         assert results == []
 
-    def test_scan_handles_interface_error(self, dpwo_module, mock_wifi):
-        mock_wifi.Cell.all.side_effect = Exception("Interface not found")
-
+    def test_scan_handles_interface_error(self, dpwo_module):
         owner = dpwo_module.NETOwner("wlan0")
         owner.os = "linux"
-        results = owner.scan_network()
+        with patch("subprocess.check_output",
+                    side_effect=subprocess.CalledProcessError(1, "nmcli")):
+            results = owner.scan_network()
         assert results == []
 
 
@@ -395,39 +379,29 @@ class TestScanNetworkWithCallback:
                    "wifi_password": "CCDDEEFF", "admin_login": False,
                    "admin_password": False}
 
-    def test_calls_on_result_per_network(self, dpwo_module, mock_wifi):
-        fake_cell = MagicMock()
-        fake_cell.ssid = "CLARO_1234"
-        fake_cell.address = "AA:BB:CC:DD:EE:FF"
-        fake_cell.signal = -50
-        fake_cell.channel = 6
-        mock_wifi.Cell.all.return_value = [fake_cell]
-
+    def test_calls_on_result_per_network(self, dpwo_module):
         owner = dpwo_module.NETOwner("wlan0")
         owner.os = "linux"
 
         results_received = []
-        owner.scan_network_with_callback(
-            on_result=lambda r: results_received.append(r),
-        )
+        with patch("subprocess.check_output",
+                    return_value="CLARO_1234:AA\\:BB\\:CC\\:DD\\:EE\\:FF:80:6\n"):
+            owner.scan_network_with_callback(
+                on_result=lambda r: results_received.append(r),
+            )
         assert len(results_received) >= 1
         assert results_received[0]["ssid"] == "CLARO_1234"
 
-    def test_calls_on_done_with_all_results(self, dpwo_module, mock_wifi):
-        fake_cell = MagicMock()
-        fake_cell.ssid = "CLARO_1234"
-        fake_cell.address = "AA:BB:CC:DD:EE:FF"
-        fake_cell.signal = -50
-        fake_cell.channel = 6
-        mock_wifi.Cell.all.return_value = [fake_cell]
-
+    def test_calls_on_done_with_all_results(self, dpwo_module):
         owner = dpwo_module.NETOwner("wlan0")
         owner.os = "linux"
 
         done_results = []
-        owner.scan_network_with_callback(
-            on_done=lambda r: done_results.extend(r),
-        )
+        with patch("subprocess.check_output",
+                    return_value="CLARO_1234:AA\\:BB\\:CC\\:DD\\:EE\\:FF:80:6\n"):
+            owner.scan_network_with_callback(
+                on_done=lambda r: done_results.extend(r),
+            )
         assert len(done_results) >= 1
 
     def test_calls_on_error_for_unsupported_platform(self, dpwo_module):
@@ -439,14 +413,13 @@ class TestScanNetworkWithCallback:
         assert len(errors) == 1
         assert "freebsd" in errors[0]
 
-    def test_empty_scan_calls_on_done(self, dpwo_module, mock_wifi):
-        mock_wifi.Cell.all.return_value = []
-
+    def test_empty_scan_calls_on_done(self, dpwo_module):
         owner = dpwo_module.NETOwner("wlan0")
         owner.os = "linux"
 
         done_called = []
-        owner.scan_network_with_callback(on_done=lambda r: done_called.append(r))
+        with patch("subprocess.check_output", return_value=""):
+            owner.scan_network_with_callback(on_done=lambda r: done_called.append(r))
         assert len(done_called) == 1
         assert done_called[0] == []
 
