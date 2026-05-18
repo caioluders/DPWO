@@ -5,17 +5,24 @@ import importlib.util
 import os
 import subprocess
 import sys
+import time
 
 from tqdm import tqdm
-from wifi import Cell, Scheme
+
+try:
+    from wifi import Cell
+except ImportError:
+    Cell = None
 
 '''
 DPWO
-Default Password Wifi Owner 0.4v
+Default Password Wifi Owner 0.5v
 python3
 '''
 
 AIRPORT_PATH = "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/A/Resources/airport"
+MAX_SCAN_RETRIES = 5
+SCAN_RETRY_DELAY = 1
 
 
 class NETOwner():
@@ -57,9 +64,22 @@ class NETOwner():
 
     def osx_networks(self):
         scan = ""
-        while scan == "":  # for some reason airport fails randomly
-            scan = subprocess.check_output([self.airport, "scan"]).decode()
-            # scan the area for wifi
+        for attempt in range(MAX_SCAN_RETRIES):
+            try:
+                scan = subprocess.check_output([self.airport, "scan"]).decode()
+            except subprocess.CalledProcessError as e:
+                if self.verbosity > 0:
+                    tqdm.write(f"Airport scan attempt {attempt + 1} failed: {e}")
+            if scan != "":
+                break
+            if attempt < MAX_SCAN_RETRIES - 1:
+                time.sleep(SCAN_RETRY_DELAY)
+
+        if scan == "":
+            if self.verbosity > 0:
+                tqdm.write(f"Airport scan failed after {MAX_SCAN_RETRIES} attempts.")
+            return
+
         scan = scan.encode('ascii','ignore')
         scan = scan.decode().split("\n")
 
@@ -78,6 +98,10 @@ class NETOwner():
                 yield obj
 
     def linux_networks(self):
+        if Cell is None:
+            print("Error: 'wifi' package not installed (required for Linux scanning).")
+            return
+
         try:
             scan = Cell.all(self.iface)
         except Exception as e:
@@ -124,51 +148,88 @@ class NETOwner():
                 return False
 
             return status
-        except (subprocess.CalledProcessError, OSError) as e:
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError) as e:
             if self.verbosity > 0:
                 tqdm.write(f"Connection error: {e}")
             return False
 
     def connect_net_osx(self, wifi):
-            connect = subprocess.check_output([
+        result = subprocess.run(
+            [
                 "networksetup", "-setairportnetwork",
-                self.iface, wifi['ssid'], wifi['wifi_password']
-            ]).decode()
-
-            if self.verbosity > 0:
-                tqdm.write(connect)
-
-            return "Failed" not in connect and "Could not" not in connect
+                self.iface, wifi["ssid"], wifi["wifi_password"],
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if self.verbosity > 0:
+            tqdm.write(result.stdout.strip())
+        return result.returncode == 0
 
     def connect_net_linux(self, wifi):
-        return Scheme.find(self.iface, wifi[1]).activate()
+        result = subprocess.run(
+            [
+                "nmcli", "device", "wifi", "connect",
+                wifi["ssid"],
+                "password", wifi["wifi_password"],
+                "ifname", self.iface,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if self.verbosity > 0:
+            tqdm.write(result.stdout.strip())
+        return result.returncode == 0
+
+    def verify_connection(self):
+        try:
+            result = subprocess.run(
+                ["ping", "-c", "1", "-W", "3", "8.8.8.8"],
+                capture_output=True,
+                timeout=10,
+            )
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, OSError) as e:
+            if self.verbosity > 0:
+                tqdm.write(f"Verification failed: {e}")
+            return False
 
     def own(self):
-
         wifi_available = self.scan_network()
 
         if len(wifi_available) == 0:
             print("No WiFi available :'(")
-        else:
-            connected = False
-            for wifi in tqdm(wifi_available):
-                tqdm.write("WI-FI: " + wifi["ssid"])
-                tqdm.write("Password: " + wifi["wifi_password"])
+            return
 
-                if self.verbosity > 0:
-                    if wifi["admin_login"] and wifi["admin_password"] : 
-                        tqdm.write("Admin credentials of the router: ")
-                        tqdm.write("User: " + wifi["admin_login"])
-                        tqdm.write("Password: " + wifi["admin_password"])
+        connected = False
+        for wifi in tqdm(wifi_available):
+            tqdm.write("WI-FI: " + wifi["ssid"])
+            tqdm.write("Password: " + wifi["wifi_password"])
 
-                if not connected and self.connect:
-                    tqdm.write("Trying to connect...")
-                    if self.connect_net(wifi):
-                        tqdm.write("Connected! Have fun (:")
-                        if not self.brute :
-                            connected = True
-                    else:
-                        tqdm.write("Nope :(")
+            if self.verbosity > 0:
+                if wifi.get("admin_login") and wifi.get("admin_password"):
+                    tqdm.write("Admin credentials of the router: ")
+                    tqdm.write("User: " + wifi["admin_login"])
+                    tqdm.write("Password: " + wifi["admin_password"])
+
+            if not self.connect:
+                continue
+
+            if connected:
+                continue
+
+            tqdm.write("Trying to connect...")
+            if self.connect_net(wifi):
+                if self.verify_connection():
+                    tqdm.write("Connected and verified! Have fun (:")
+                    if not self.brute:
+                        connected = True
+                else:
+                    tqdm.write("Connected but no internet access, trying next...")
+            else:
+                tqdm.write("Nope :(")
 
 
 def parse_args():
