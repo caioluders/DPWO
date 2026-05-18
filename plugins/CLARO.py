@@ -23,5 +23,4 @@ def is_vuln(ssid,mac) :
 
 def own(ssid,mac) :
 	password = mac.replace(":","").upper()[4:]
-	print(password)
 	return {'ssid':ssid,'mac':mac,'wifi_password':password,'admin_login':False,'admin_password':False}

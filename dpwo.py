@@ -30,19 +30,28 @@ class NETOwner():
         self.plugins = self.load_plugins()
 
     def load_plugins(self) :
-        plugin_folder = "./plugins"
+        plugin_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "plugins")
         plugins = []
-        possible_plugins = os.listdir(plugin_folder)
 
-        for f in possible_plugins : 
+        try:
+            possible_plugins = os.listdir(plugin_folder)
+        except OSError as e:
+            print(f"Error: Could not load plugins from {plugin_folder}: {e}")
+            return plugins
+
+        for f in possible_plugins :
             location = os.path.join(plugin_folder,f)
 
-            if f[-3:] != '.py' or os.path.isfile(location) != True:
+            if not f.endswith('.py') or not os.path.isfile(location):
                 continue
-            
-            info = importlib.machinery.PathFinder().find_spec(f[:-3],[plugin_folder])
-            p = info.loader.load_module()
-            plugins.append(p)
+
+            try:
+                spec = importlib.util.spec_from_file_location(f[:-3], location)
+                p = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(p)
+                plugins.append(p)
+            except Exception as e:
+                print(f"Warning: Failed to load plugin {f}: {e}")
 
         return plugins
 
@@ -69,7 +78,12 @@ class NETOwner():
                 yield obj
 
     def linux_networks(self):
-        scan = Cell.all(self.iface)
+        try:
+            scan = Cell.all(self.iface)
+        except Exception as e:
+            print(f"Error scanning with interface '{self.iface}': {e}")
+            return
+
         for wifi in scan:
             obj = [wifi.ssid, wifi.address, wifi.signal, wifi.channel, wifi]
             yield obj
@@ -79,7 +93,9 @@ class NETOwner():
             scanner = self.linux_networks()
         elif self.os == "darwin":
             scanner = self.osx_networks()
-        # elif os == "win32": TODO
+        else:
+            print(f"Error: Unsupported platform '{self.os}'.")
+            return []
 
         results = []
         for wifi in scanner :
@@ -103,11 +119,15 @@ class NETOwner():
                 status = self.connect_net_linux(wifi)
             elif self.os == "darwin":
                 status = self.connect_net_osx(wifi)
-            # elif os == "win32":
+            else:
+                print(f"Error: Connection not supported on '{self.os}'.")
+                return False
 
             return status
-        except:
-            return False;
+        except (subprocess.CalledProcessError, OSError) as e:
+            if self.verbosity > 0:
+                tqdm.write(f"Connection error: {e}")
+            return False
 
     def connect_net_osx(self, wifi):
             connect = subprocess.check_output([
