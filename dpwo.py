@@ -108,31 +108,63 @@ class NETOwner():
                 yield obj
 
     def linux_networks(self):
+        # Try nmcli first, fall back to iwlist
+        scan = self._linux_scan_nmcli()
+        if scan is None:
+            scan = self._linux_scan_iwlist()
+        if scan is None:
+            self._log(f"Error: Could not scan. Install NetworkManager (nmcli) or wireless-tools (iwlist).")
+            return
+        yield from scan
+
+    def _linux_scan_nmcli(self):
         try:
-            scan = subprocess.check_output(
+            out = subprocess.check_output(
                 [
-                    "nmcli", "-t", "-f", "SSID,BSSID,SIGNAL,CHAN",
+                    "nmcli", "-t", "-f", "SSID,BSSID",
                     "device", "wifi", "list",
                     "ifname", self.iface,
                     "--rescan", "yes",
                 ],
                 text=True, timeout=30,
             )
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as e:
-            self._log(f"Error scanning with interface '{self.iface}': {e}")
-            return
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            return None
 
         import re
-        for line in scan.strip().splitlines():
-            # nmcli -t escapes : as \: inside values; split on unescaped :
+        results = []
+        for line in out.strip().splitlines():
             parts = re.split(r'(?<!\\):', line)
             if len(parts) < 2:
                 continue
             ssid = parts[0].replace("\\:", ":").strip()
             bssid = parts[1].replace("\\:", ":").strip()
-            if not ssid or not bssid:
-                continue
-            yield [ssid, bssid]
+            if ssid and bssid:
+                results.append([ssid, bssid])
+        return results
+
+    def _linux_scan_iwlist(self):
+        try:
+            out = subprocess.check_output(
+                ["iwlist", self.iface, "scan"],
+                text=True, timeout=30, stderr=subprocess.DEVNULL,
+            )
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            return None
+
+        import re
+        results = []
+        current_mac = None
+        for line in out.splitlines():
+            line = line.strip()
+            mac_match = re.search(r'Address:\s*([0-9A-Fa-f:]{17})', line)
+            if mac_match:
+                current_mac = mac_match.group(1)
+            ssid_match = re.search(r'ESSID:"(.+)"', line)
+            if ssid_match and current_mac:
+                results.append([ssid_match.group(1), current_mac])
+                current_mac = None
+        return results
 
     def windows_networks(self):
         try:
@@ -216,17 +248,21 @@ class NETOwner():
         return result.returncode == 0
 
     def connect_net_linux(self, wifi):
-        result = subprocess.run(
-            [
-                "nmcli", "device", "wifi", "connect",
-                wifi["ssid"],
-                "password", wifi["wifi_password"],
-                "ifname", self.iface,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
+        try:
+            result = subprocess.run(
+                [
+                    "nmcli", "device", "wifi", "connect",
+                    wifi["ssid"],
+                    "password", wifi["wifi_password"],
+                    "ifname", self.iface,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except FileNotFoundError:
+            self._log("Error: nmcli not found. Install NetworkManager to connect.")
+            return False
         if self.verbosity > 0:
             tqdm.write(result.stdout.strip())
         return result.returncode == 0

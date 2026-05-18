@@ -62,7 +62,7 @@ class DPWOApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("DPWO - Free WiFi")
+        self.title("DPWO - WiFi Gratis")
         self.geometry("700x600")
         self.minsize(600, 500)
 
@@ -71,6 +71,7 @@ class DPWOApp(ctk.CTk):
         self._results = []
 
         self._build_ui()
+        self._update_button_label()
 
     def _build_ui(self):
         # -- Top controls --
@@ -86,19 +87,21 @@ class DPWOApp(ctk.CTk):
         self._iface_menu.pack(side="left", padx=5)
 
         self._brute_var = ctk.BooleanVar(value=False)
-        ctk.CTkCheckBox(top, text="Brute force", variable=self._brute_var).pack(
-            side="left", padx=20
-        )
+        ctk.CTkCheckBox(
+            top, text="Forca bruta", variable=self._brute_var
+        ).pack(side="left", padx=20)
 
         self._autoconnect_var = ctk.BooleanVar(value=True)
         ctk.CTkCheckBox(
-            top, text="Auto-connect", variable=self._autoconnect_var
+            top, text="Conectar automaticamente",
+            variable=self._autoconnect_var,
+            command=self._update_button_label,
         ).pack(side="left", padx=5)
 
         # -- Scan button --
         self._scan_btn = ctk.CTkButton(
             self,
-            text="Scan & Connect",
+            text="",
             height=45,
             font=ctk.CTkFont(size=16, weight="bold"),
             command=self._on_scan_click,
@@ -110,7 +113,7 @@ class DPWOApp(ctk.CTk):
         status_frame.pack(fill="x", padx=15, pady=(0, 5))
 
         self._status_label = ctk.CTkLabel(
-            status_frame, text="Ready. Click Scan & Connect to start."
+            status_frame, text="Pronto. Clique para iniciar."
         )
         self._status_label.pack(side="left", padx=10, pady=5)
 
@@ -123,7 +126,8 @@ class DPWOApp(ctk.CTk):
         table_frame.pack(fill="both", expand=True, padx=15, pady=5)
 
         ctk.CTkLabel(
-            table_frame, text="Found Networks:", font=ctk.CTkFont(weight="bold")
+            table_frame, text="Redes encontradas:",
+            font=ctk.CTkFont(weight="bold"),
         ).pack(anchor="w", padx=10, pady=(5, 0))
 
         style = ttk.Style()
@@ -153,7 +157,7 @@ class DPWOApp(ctk.CTk):
             style="Dark.Treeview",
         )
         self._tree.heading("ssid", text="SSID")
-        self._tree.heading("password", text="Password")
+        self._tree.heading("password", text="Senha")
         self._tree.heading("status", text="Status")
         self._tree.column("ssid", width=220)
         self._tree.column("password", width=220)
@@ -171,13 +175,14 @@ class DPWOApp(ctk.CTk):
         btn_frame.pack(fill="x", padx=15, pady=5)
 
         self._copy_btn = ctk.CTkButton(
-            btn_frame, text="Copy Password", command=self._on_copy, state="disabled"
+            btn_frame, text="Copiar Senha",
+            command=self._on_copy, state="disabled",
         )
         self._copy_btn.pack(side="left", padx=10, pady=5)
 
         self._connect_btn = ctk.CTkButton(
             btn_frame,
-            text="Connect to Selected",
+            text="Conectar na Selecionada",
             command=self._on_connect_selected,
             state="disabled",
         )
@@ -195,7 +200,15 @@ class DPWOApp(ctk.CTk):
         self._log_text.pack(fill="x", padx=10, pady=5)
         self._log_text.configure(state="disabled")
 
-    # -- Logging --
+    # -- Helpers --
+
+    def _update_button_label(self):
+        if self._scanning:
+            return
+        if self._autoconnect_var.get():
+            self._scan_btn.configure(text="Buscar e Conectar")
+        else:
+            self._scan_btn.configure(text="Buscar Redes")
 
     def _log(self, msg):
         self._log_text.configure(state="normal")
@@ -214,7 +227,7 @@ class DPWOApp(ctk.CTk):
 
         self._scanning = True
         self._results = []
-        self._scan_btn.configure(state="disabled", text="Scanning...")
+        self._scan_btn.configure(state="disabled", text="Buscando...")
         self._copy_btn.configure(state="disabled")
         self._connect_btn.configure(state="disabled")
         self._progress.configure(mode="indeterminate")
@@ -223,8 +236,8 @@ class DPWOApp(ctk.CTk):
         for item in self._tree.get_children():
             self._tree.delete(item)
 
-        self._set_status("Scanning for networks...")
-        self._log(f"Scanning on {self._iface_var.get()}...")
+        self._set_status("Buscando redes...")
+        self._log(f"Buscando na interface {self._iface_var.get()}...")
 
         self._owner = NETOwner(
             self._iface_var.get(),
@@ -232,7 +245,7 @@ class DPWOApp(ctk.CTk):
             brute=self._brute_var.get(),
             log_callback=lambda msg: self.after(0, self._log, msg),
         )
-        self._log(f"Loaded {len(self._owner.plugins)} plugins.")
+        self._log(f"{len(self._owner.plugins)} plugins carregados.")
 
         thread = threading.Thread(target=self._scan_thread, daemon=True)
         thread.start()
@@ -250,7 +263,7 @@ class DPWOApp(ctk.CTk):
             "", "end",
             values=(wifi["ssid"], wifi["wifi_password"], "--"),
         )
-        self._log(f"Found: {wifi['ssid']}")
+        self._log(f"Encontrada: {wifi['ssid']}")
 
     def _scan_done(self, results):
         self._progress.stop()
@@ -259,55 +272,58 @@ class DPWOApp(ctk.CTk):
         self._scanning = False
 
         if not results:
-            self._set_status("No vulnerable networks found.")
-            self._scan_btn.configure(state="normal", text="Scan & Connect")
-            self._log("Scan complete. No vulnerable networks found.")
+            self._set_status("Nenhuma rede vulneravel encontrada.")
+            self._update_button_label()
+            self._scan_btn.configure(state="normal")
+            self._log("Busca concluida. Nenhuma rede vulneravel encontrada.")
             return
 
-        self._set_status(f"Found {len(results)} network(s).")
+        self._set_status(f"{len(results)} rede(s) encontrada(s).")
         self._copy_btn.configure(state="normal")
         self._connect_btn.configure(state="normal")
-        self._log(f"Scan complete. Found {len(results)} vulnerable network(s).")
+        self._log(f"Busca concluida. {len(results)} rede(s) vulneravel(is).")
 
         if self._autoconnect_var.get():
-            self._set_status("Auto-connecting to best network...")
+            self._set_status("Conectando automaticamente...")
             thread = threading.Thread(
                 target=self._autoconnect_thread, daemon=True
             )
             thread.start()
         else:
-            self._scan_btn.configure(state="normal", text="Scan & Connect")
+            self._update_button_label()
+            self._scan_btn.configure(state="normal")
 
     def _scan_error(self, err):
         self._progress.stop()
         self._progress.configure(mode="determinate")
         self._progress.set(0)
         self._scanning = False
-        self._set_status(f"Scan error: {err}")
-        self._scan_btn.configure(state="normal", text="Scan & Connect")
-        self._log(f"Error: {err}")
+        self._set_status(f"Erro na busca: {err}")
+        self._update_button_label()
+        self._scan_btn.configure(state="normal")
+        self._log(f"Erro: {err}")
 
     # -- Connection logic --
 
     def _autoconnect_thread(self):
         for i, wifi in enumerate(self._results):
-            self.after(0, self._log, f"Trying to connect to {wifi['ssid']}...")
-            self.after(0, self._update_row_status, i, "Connecting...")
+            self.after(0, self._log, f"Tentando conectar em {wifi['ssid']}...")
+            self.after(0, self._update_row_status, i, "Conectando...")
             status = self._owner.connect_and_verify(wifi)
             if status == "connected":
-                self.after(0, self._update_row_status, i, "Connected!")
-                self.after(0, self._set_status, f"Connected to {wifi['ssid']}!")
-                self.after(0, self._log, f"Connected and verified: {wifi['ssid']}")
+                self.after(0, self._update_row_status, i, "Conectado!")
+                self.after(0, self._set_status, f"Conectado em {wifi['ssid']}!")
+                self.after(0, self._log, f"Conectado e verificado: {wifi['ssid']}")
                 self.after(0, self._finish_connect)
                 return
             elif status == "no_internet":
-                self.after(0, self._update_row_status, i, "No internet")
-                self.after(0, self._log, f"{wifi['ssid']}: connected but no internet")
+                self.after(0, self._update_row_status, i, "Sem internet")
+                self.after(0, self._log, f"{wifi['ssid']}: sem acesso a internet")
             else:
-                self.after(0, self._update_row_status, i, "Failed")
-                self.after(0, self._log, f"{wifi['ssid']}: connection failed")
+                self.after(0, self._update_row_status, i, "Falhou")
+                self.after(0, self._log, f"{wifi['ssid']}: falha na conexao")
 
-        self.after(0, self._set_status, "Could not connect to any network.")
+        self.after(0, self._set_status, "Nao foi possivel conectar em nenhuma rede.")
         self.after(0, self._finish_connect)
 
     def _on_connect_selected(self):
@@ -321,7 +337,7 @@ class DPWOApp(ctk.CTk):
 
         wifi = self._results[idx]
         self._connect_btn.configure(state="disabled")
-        self._set_status(f"Connecting to {wifi['ssid']}...")
+        self._set_status(f"Conectando em {wifi['ssid']}...")
 
         owner = NETOwner(
             self._iface_var.get(),
@@ -333,23 +349,24 @@ class DPWOApp(ctk.CTk):
         def connect_thread():
             status = owner.connect_and_verify(wifi)
             if status == "connected":
-                self.after(0, self._update_row_status, idx, "Connected!")
-                self.after(0, self._set_status, f"Connected to {wifi['ssid']}!")
-                self.after(0, self._log, f"Connected and verified: {wifi['ssid']}")
+                self.after(0, self._update_row_status, idx, "Conectado!")
+                self.after(0, self._set_status, f"Conectado em {wifi['ssid']}!")
+                self.after(0, self._log, f"Conectado e verificado: {wifi['ssid']}")
             elif status == "no_internet":
-                self.after(0, self._update_row_status, idx, "No internet")
-                self.after(0, self._set_status, "Connected but no internet access.")
-                self.after(0, self._log, f"{wifi['ssid']}: no internet")
+                self.after(0, self._update_row_status, idx, "Sem internet")
+                self.after(0, self._set_status, "Conectado mas sem acesso a internet.")
+                self.after(0, self._log, f"{wifi['ssid']}: sem internet")
             else:
-                self.after(0, self._update_row_status, idx, "Failed")
-                self.after(0, self._set_status, "Connection failed.")
-                self.after(0, self._log, f"{wifi['ssid']}: failed")
+                self.after(0, self._update_row_status, idx, "Falhou")
+                self.after(0, self._set_status, "Falha na conexao.")
+                self.after(0, self._log, f"{wifi['ssid']}: falhou")
             self.after(0, lambda: self._connect_btn.configure(state="normal"))
 
         threading.Thread(target=connect_thread, daemon=True).start()
 
     def _finish_connect(self):
-        self._scan_btn.configure(state="normal", text="Scan & Connect")
+        self._update_button_label()
+        self._scan_btn.configure(state="normal")
 
     def _update_row_status(self, idx, status):
         children = self._tree.get_children()
@@ -365,7 +382,7 @@ class DPWOApp(ctk.CTk):
         values = self._tree.item(sel[0], "values")
         self.clipboard_clear()
         self.clipboard_append(values[1])
-        self._set_status(f"Password copied for {values[0]}!")
+        self._set_status(f"Senha copiada para {values[0]}!")
 
 
 def main():
