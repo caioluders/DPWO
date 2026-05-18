@@ -17,8 +17,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -r requirements.txt
-      - run: python -m pytest tests/ -v
+      - run: make test
 
   build:
     needs: test
@@ -39,16 +38,20 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Build binaries (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: make build
+
+      - name: Build binaries (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
         run: |
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
-
-      - name: Build CLI binary
-        run: python build.py cli
-
-      - name: Build GUI binary
-        run: python build.py gui
+          python -m venv .venv
+          .venv/Scripts/pip install --upgrade pip
+          .venv/Scripts/pip install -r requirements.txt
+          .venv/Scripts/pip install -r requirements-dev.txt
+          .venv/Scripts/pyinstaller --onefile --console --name dpwo --add-data "plugins;plugins" dpwo.py
+          .venv/Scripts/pyinstaller --onefile --windowed --name dpwo-gui --add-data "plugins;plugins" gui.py
 
       - name: Rename binaries (Linux/macOS)
         if: runner.os != 'Windows'
