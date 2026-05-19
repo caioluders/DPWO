@@ -29,10 +29,11 @@ def _get_base_path():
 
 
 class NETOwner():
-    def __init__(self, iface, connect=False, brute=False,
+    def __init__(self, iface, connect=False, brute=False, hidden=False,
                  airport=AIRPORT_PATH, verbosity=0, log_callback=None):
         self.iface = iface
         self.brute = brute
+        self.hidden = hidden
         self.connect = connect
         self.airport = airport
         self.verbosity = verbosity
@@ -211,7 +212,7 @@ class NETOwner():
         if not station_path:
             return None
 
-        # Trigger a scan
+        # Trigger a scan and wait for completion
         try:
             subprocess.run(
                 [
@@ -220,7 +221,21 @@ class NETOwner():
                 ],
                 capture_output=True, timeout=10,
             )
-            time.sleep(3)
+            # Poll Scanning property until done (max 10s)
+            for _ in range(20):
+                time.sleep(0.5)
+                try:
+                    prop = subprocess.check_output(
+                        [
+                            "busctl", "get-property", "net.connman.iwd",
+                            station_path, "net.connman.iwd.Station", "Scanning",
+                        ],
+                        text=True, timeout=5,
+                    )
+                    if "false" in prop:
+                        break
+                except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                    break
         except (OSError, subprocess.TimeoutExpired):
             pass
 
@@ -278,6 +293,24 @@ class NETOwner():
                         results.append([ssid, addr_match.group(1)])
                 except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
                     continue
+
+        # Also scan hidden networks if requested
+        if self.hidden:
+            try:
+                hidden_out = subprocess.check_output(
+                    [
+                        "busctl", "call", "net.connman.iwd",
+                        station_path, "net.connman.iwd.Station",
+                        "GetHiddenAccessPoints",
+                    ],
+                    text=True, timeout=10,
+                )
+                # Output format: a(sns) N "MAC" signal "security" ...
+                hidden_macs = re.findall(r'"([0-9a-fA-F:]{17})"', hidden_out)
+                for mac in hidden_macs:
+                    results.append([f"[hidden] {mac}", mac])
+            except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                pass
 
         return results if results else None
 
@@ -654,8 +687,10 @@ def parse_args():
     default_iface = "Wi-Fi" if sys.platform == "win32" else "wlp3s0"
     parser.add_argument("-i", "--interface", default=default_iface,
                         help="Network interface.")
-    parser.add_argument("-b", "--brute",action='store_true', default=False,
+    parser.add_argument("-b", "--brute", action='store_true', default=False,
                         help="Bruteforce all networks unregarding the SSID.")
+    parser.add_argument("--hidden", action='store_true', default=False,
+                        help="Also scan hidden networks (no SSID).")
     parser.add_argument("-d", "--disable", action="store_false", default=True,
                         help="Disable autoconnect to the first vulnerable network.")
     parser.add_argument("-a", "--airport", default=AIRPORT_PATH,
@@ -677,6 +712,7 @@ def main():
         args.interface,
         connect=args.disable,
         brute=args.brute,
+        hidden=args.hidden,
         airport=args.airport,
         verbosity=args.verbosity or 0
     )

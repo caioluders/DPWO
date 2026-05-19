@@ -131,9 +131,14 @@ class DPWOApp(ctk.CTk):
             top, text="Forca bruta", variable=self._brute_var
         ).pack(side="left", padx=20)
 
+        self._hidden_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            top, text="Redes ocultas", variable=self._hidden_var
+        ).pack(side="left", padx=10)
+
         self._autoconnect_var = ctk.BooleanVar(value=True)
         ctk.CTkCheckBox(
-            top, text="Conectar automaticamente",
+            top, text="Auto-conectar",
             variable=self._autoconnect_var,
             command=self._update_button_label,
         ).pack(side="left", padx=5)
@@ -283,6 +288,7 @@ class DPWOApp(ctk.CTk):
             self._iface_var.get(),
             connect=False,
             brute=self._brute_var.get(),
+            hidden=self._hidden_var.get(),
             log_callback=lambda msg: self.after(0, self._log, msg),
         )
         self._log(f"{len(self._owner.plugins)} plugins carregados.")
